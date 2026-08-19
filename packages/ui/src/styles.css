@@ -286,3 +286,9 @@
     scroll-behavior: auto !important;
   }
 }
+/* 聊天历史可能含大量工具 JSON；让视口外消息延迟布局/绘制，避免长视频任务期间
+ * 每个流式帧都重排整段历史。contain-intrinsic-size 保持滚动条稳定。 */
+.pi-chat-message {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 160px;
+}

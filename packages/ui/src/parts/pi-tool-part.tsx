@@ -36,6 +36,7 @@ import {
   useMaskPaths,
   useMaskPathsDeep,
 } from "../path-display/path-display-context.js";
+import { compactJson } from "../lib/compact-json.js";
 
 type AnyPart = UIMessage["parts"][number];
 export type ToolPart =
@@ -126,16 +127,6 @@ function useToolTimer(phase: ToolPhase): {
   const settled = endedAt !== null;
   const end = endedAt ?? Date.now();
   return { label: formatDuration(end - startedAt, settled), settled };
-}
-
-function stringify(value: unknown): string {
-  if (value === undefined) return "";
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
 }
 
 // 轻量同步 JSON token 高亮:把 JSON 文本切成 key/string/number/bool/null/punct
@@ -348,7 +339,7 @@ function JsonBlock({
   readonly value: unknown;
   readonly className?: string;
 }): React.JSX.Element {
-  const text = stringify(value);
+  const text = compactJson(value);
   return (
     <pre
       className={cn(
@@ -523,6 +514,15 @@ function attIdFromUrl(url: string): string | undefined {
   return /\/attachments\/(att_[^/?#]+)/.exec(url)?.[1];
 }
 
+/**
+ * 保留 server 签发的 displayUrl；裸 attachmentId 只能作兜底路径。
+ * 附件 raw 端点受签名保护，前端不能自行把有效签名剥掉。
+ */
+function freshAttachmentUrl(attachmentId: string, fallback?: string): string {
+  if (fallback !== undefined && fallback.trim() !== "") return fallback;
+  return `/api/attachments/${encodeURIComponent(attachmentId)}/raw`;
+}
+
 function imageAssetsFromDetails(value: unknown): ConversationImageAsset[] {
   if (typeof value !== "object" || value === null) return [];
   const assets = (value as { assets?: unknown }).assets;
@@ -548,7 +548,9 @@ function imageAssetsFromDetails(value: unknown): ConversationImageAsset[] {
         : attIdFromUrl(asset.displayUrl);
     return [{
       id: attachmentId ?? `${asset.displayUrl}:${index}`,
-      url: asset.displayUrl,
+      url: attachmentId === undefined
+        ? asset.displayUrl
+        : freshAttachmentUrl(attachmentId, asset.displayUrl),
       mediaType: typeof asset.mimeType === "string" && asset.mimeType !== ""
         ? asset.mimeType
         : "image/*",
@@ -625,7 +627,9 @@ function DefaultOutputNode({
           const attachmentId = attIdFromUrl(image.src);
           return {
             id: attachmentId ?? `${image.src}:${index}`,
-            url: image.src,
+            url: attachmentId === undefined
+              ? image.src
+              : freshAttachmentUrl(attachmentId, image.src),
             filename: image.alt || undefined,
             mediaType: "image/*",
             ...(attachmentId !== undefined ? { attachmentId } : {}),

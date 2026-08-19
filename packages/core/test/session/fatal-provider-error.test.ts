@@ -25,6 +25,10 @@ describe("isFatalProviderError", () => {
     ["usage limit reached", "Monthly usage limit reached"],
     ["out of credits", "account is out of credits"],
     ["payment required", "HTTP Payment Required"],
+    ["account overdue", "AccountOverdueError: the account has an overdue balance"],
+    ["blocked API key", "InvalidApiKey: API-key is blocked"],
+    ["invalid API key", "invalid api key supplied by provider"],
+    ["suspended account", "account suspended by provider"],
   ])("致命措辞:%s → 致命", (_name, msg) => {
     expect(isFatalProviderError(msg)).toBe(true);
   });

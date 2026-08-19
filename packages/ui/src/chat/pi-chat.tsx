@@ -2385,6 +2385,7 @@ export function PiChat({
                 key={message.id}
                 data-pi-message-id={message.id}
                 data-pi-message-role={message.role}
+                className="pi-chat-message"
               >
                 <MessageComp {...messageProps} />
               </div>

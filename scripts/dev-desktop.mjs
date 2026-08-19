@@ -43,11 +43,16 @@ const noProxy = [...new Set([
 const devEnv = {
   ...process.env,
   NODE_ENV: process.env.NODE_ENV ?? "development",
+  // Desktop agent runtime must keep video snapshots/attachments outside the watched source tree.
+  PI_WEB_DESKTOP: process.env.PI_WEB_DESKTOP ?? "1",
   NO_PROXY: noProxy,
   no_proxy: noProxy,
   PI_WEB_DEV_CLIENT_HOST: process.env.PI_WEB_DEV_CLIENT_HOST ?? "127.0.0.1",
   PI_WEB_DEV_API_URL: apiUrl,
   PI_WEB_NATIVE_CHILD_WEBVIEWS: process.env.PI_WEB_NATIVE_CHILD_WEBVIEWS ?? "1",
+  // Agent runner hot reload is opt-in; desktop video jobs must not restart a
+  // live runner while Remotion/FFmpeg is rendering or while chat is streaming.
+  PI_WEB_DISABLE_AGENT_HOT_RELOAD: "1",
   SESSION_STORE: desktopSessionStore,
   PI_WEB_SHELL_TOKEN: process.env.PI_WEB_SHELL_TOKEN ?? randomBytes(32).toString("hex"),
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: webviewArgs.includes("--remote-debugging-port=")

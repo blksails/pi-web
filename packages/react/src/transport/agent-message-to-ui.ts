@@ -44,6 +44,74 @@ export interface AgentMessagesToUiOptions {
   readonly baseUrl?: string;
 }
 
+/** 工具结果只供 UI 展示；原始结果仍留服务端，避免大 catalog/project 快照拖死主线程。 */
+const MAX_TOOL_OUTPUT_JSON = 16_000;
+const MAX_TOOL_ARRAY_ITEMS = 24;
+const UI_KEY_PRIORITY = new Map([
+  ["content", 0],
+  ["details", 1],
+  ["assets", 2],
+  ["ok", 3],
+  ["error", 4],
+  ["status", 5],
+  ["state", 6],
+  ["kind", 7],
+  ["model", 8],
+  ["projectId", 9],
+  ["revision", 10],
+  ["value", 11],
+  ["project", 12],
+]);
+
+function jsonSize(value: unknown): number {
+  try {
+    const text = JSON.stringify(value);
+    return typeof text === "string" ? text.length : 0;
+  } catch {
+    return Number.MAX_SAFE_INTEGER;
+  }
+}
+
+function projectForUi(value: unknown, budget: number, depth: number): unknown {
+  if (typeof value === "string") return value.length > budget ? `${value.slice(0, budget)}…` : value;
+  if (value === null || typeof value !== "object") return value;
+  if (depth >= 4) return "[内容已折叠]";
+  if (Array.isArray(value)) {
+    const items: unknown[] = [];
+    for (const item of value.slice(0, MAX_TOOL_ARRAY_ITEMS)) {
+      const projected = projectForUi(item, Math.max(256, Math.floor(budget / 2)), depth + 1);
+      if (jsonSize([...items, projected]) > budget) break;
+      items.push(projected);
+    }
+    if (items.length < value.length) items.push(`[其余 ${value.length - items.length} 项已折叠]`);
+    return items;
+  }
+  const source = value as Record<string, unknown>;
+  const keys = Object.keys(source).sort(
+    (a, b) => (UI_KEY_PRIORITY.get(a) ?? 100) - (UI_KEY_PRIORITY.get(b) ?? 100),
+  );
+  const result: Record<string, unknown> = {};
+  for (const key of keys) {
+    const projected = projectForUi(source[key], Math.max(256, Math.floor(budget / 2)), depth + 1);
+    const candidate = { ...result, [key]: projected };
+    if (jsonSize(candidate) > budget) continue;
+    result[key] = projected;
+  }
+  return result;
+}
+
+export function compactToolOutputForUi(output: unknown): unknown {
+  if (jsonSize(output) <= MAX_TOOL_OUTPUT_JSON) return output;
+  const projected = projectForUi(output, MAX_TOOL_OUTPUT_JSON - 160, 0);
+  return {
+    ...(projected !== null && typeof projected === "object" && !Array.isArray(projected)
+      ? projected
+      : { value: projected }),
+    _uiTruncated: true,
+    _uiSummary: "工具结果过大，已折叠展示；原始结果仍保留在服务端。",
+  };
+}
+
 /**
  * 把根相对的展示 URL 用 baseUrl 解析为前端可达 URL(与 useAttachments.resolveDisplayUrl
  * 同策略):绝对 http(s) 原样;`data:`/相对非 `/` 原样;仅根相对(`/` 开头)经 joinUrl 前缀。
@@ -85,10 +153,54 @@ interface ContentItem {
 }
 
 /**
+ * toolResult 正文里的 markdown 可能仍带持久化时的旧签名,而 details.assets 已由
+ * server 按当前会话重新签发。UI 只替换已在同一结果 details 中确认的附件 id,不凭空
+ * 生成裸 raw URL,避免正文渲染绕过签名校验。
+ */
+function rewriteTextAttachmentUrls(content: unknown, details: unknown): unknown {
+  if (!Array.isArray(details) && (details === null || typeof details !== "object")) {
+    return content;
+  }
+  const assets = (details as { assets?: unknown }).assets;
+  if (!Array.isArray(assets)) return content;
+  const freshById = new Map<string, string>();
+  for (const asset of assets) {
+    if (asset === null || typeof asset !== "object") continue;
+    const id = (asset as { attachmentId?: unknown }).attachmentId;
+    const url = (asset as { displayUrl?: unknown }).displayUrl;
+    if (typeof id === "string" && id !== "" && typeof url === "string" && url !== "") {
+      freshById.set(id, url);
+    }
+  }
+  if (freshById.size === 0) return content;
+
+  const rewrite = (text: string): string =>
+    text.replace(
+      /(?:https?:\/\/[^\s)\]"'<>]+)?\/attachments\/(att_[A-Za-z0-9_-]+)\/raw(?:\?[^\s)\]"'<>]*)?/g,
+      (match, id: string) => {
+        const fresh = freshById.get(id);
+        if (fresh === undefined) return match;
+        const marker = "/attachments/";
+        const markerIndex = match.indexOf(marker);
+        return markerIndex < 0 ? fresh : `${match.slice(0, markerIndex)}${fresh.slice(fresh.indexOf(marker))}`;
+      },
+    );
+
+  if (typeof content === "string") return rewrite(content);
+  if (!Array.isArray(content)) return content;
+  return content.map((item) => {
+    if (item === null || typeof item !== "object") return item;
+    const record = item as Record<string, unknown>;
+    return typeof record.text === "string" ? { ...record, text: rewrite(record.text) } : item;
+  });
+}
+
+/**
  * 把历史 image content 解析为可渲染 URL(Req 6.1/6.2/6.3):
- *  - 带分发 `displayUrl`(http(s) 原样 / 根相对经 baseUrl 前缀)→ 作为分发 URL;
- *  - 带公开 `attachmentId`(`att_…`)→ 构造分发端点路径 `/attachments/:id/raw` 后经
- *    baseUrl 前缀为 `/api/attachments/:id/raw`(否则 Next 根相对会 404);
+ *  - 带分发 `displayUrl`(http(s) 原样 / 根相对经 baseUrl 前缀)→ 作为分发 URL；
+ *    server 查询端点会按 `attachmentId` 重新签发，不能丢掉 `exp`/`sig`；
+ *  - 仅带公开 `attachmentId`(`att_…`)→ 构造分发端点路径 `/attachments/:id/raw` 后经
+ *    baseUrl 前缀为 `/api/attachments/:id/raw`(此形态须由 server 历史查询先补签名);
  *  - 否则(遗留无 id 的内联 base64)→ 重建 `data:` 内联 URL(防回归,baseUrl 不前缀)。
  */
 function imageUrl(raw: ContentItem, baseUrl: string): string {
@@ -320,8 +432,10 @@ export function agentMessagesToUiMessages(
           existing.errorText = joinText(content);
         } else {
           existing.state = "output-available";
-          existing.output =
-            details !== undefined ? { content, details } : content;
+          const displayContent = rewriteTextAttachmentUrls(content, details);
+          existing.output = compactToolOutputForUi(
+            details !== undefined ? { content: displayContent, details } : displayContent,
+          );
         }
         return;
       }
@@ -335,7 +449,11 @@ export function agentMessagesToUiMessages(
         ...(isError
           ? { errorText: joinText(content) }
           : {
-              output: details !== undefined ? { content, details } : content,
+              output: compactToolOutputForUi(
+                details !== undefined
+                  ? { content: rewriteTextAttachmentUrls(content, details), details }
+                  : content,
+              ),
             }),
       };
       out.push({ id, role: "assistant", parts: [tp as unknown as UIPart] });

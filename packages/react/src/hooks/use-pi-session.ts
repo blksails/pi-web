@@ -19,6 +19,13 @@ import { agentMessagesToUiMessages } from "../transport/agent-message-to-ui.js";
 import { PiHttpError, PiProtocolVersionError } from "../client/errors.js";
 import { usePiContext } from "../provider/pi-provider.js";
 
+const MAX_RESUMED_HISTORY_MESSAGES = 80;
+
+function resumedHistoryWindow<T>(messages: readonly T[]): readonly T[] {
+  if (messages.length <= MAX_RESUMED_HISTORY_MESSAGES) return messages;
+  return [messages[0]!, ...messages.slice(-(MAX_RESUMED_HISTORY_MESSAGES - 1))];
+}
+
 export type PiSessionStatus =
   | "idle"
   | "connecting"
@@ -128,7 +135,7 @@ export function usePiSession(opts: UsePiSessionOptions): UsePiSessionResult {
             // 历史项的根相对分发 URL(/attachments/:id/raw)需经 client.baseUrl(如 /api)
             // 前缀为可达 URL,否则 Next 根相对会 404(与 useAttachments.resolveDisplayUrl 同策略)。
             setInitialMessages(
-              agentMessagesToUiMessages(history.messages, {
+              agentMessagesToUiMessages(resumedHistoryWindow(history.messages), {
                 baseUrl: client.baseUrl,
               }),
             );

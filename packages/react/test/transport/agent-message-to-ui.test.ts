@@ -322,6 +322,53 @@ describe("agentMessagesToUiMessages", () => {
     expect(tool.errorText).toBe("boom");
   });
 
+  it("超大 toolResult 只保留可展示投影,不把完整快照带入 UI", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([
+        { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "read", arguments: {} }] },
+        {
+          role: "toolResult",
+          toolCallId: "t1",
+          toolName: "read",
+          content: [{ type: "text", text: "ok" }],
+          details: {
+            ok: true,
+            assets: [{ attachmentId: "att_x", displayUrl: "/api/attachments/att_x/raw" }],
+            value: "x".repeat(40_000),
+          },
+          isError: false,
+        },
+      ]),
+    );
+    const tool = (out[0]?.parts ?? [])[0] as Record<string, unknown>;
+    const projected = tool.output as Record<string, unknown>;
+    expect(projected._uiTruncated).toBe(true);
+    expect(JSON.stringify(projected).length).toBeLessThan(16_000);
+    expect((projected.details as Record<string, unknown>).assets).toBeDefined();
+  });
+
+  it("toolResult 正文 markdown 复用 details.assets 的新签名 URL", () => {
+    const stale = "/api/attachments/att_media/raw?exp=1&sig=expired";
+    const fresh = "/api/attachments/att_media/raw?exp=2&sig=fresh";
+    const out = agentMessagesToUiMessages(
+      msgs([
+        { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "video", arguments: {} }] },
+        {
+          role: "toolResult",
+          toolCallId: "t1",
+          toolName: "video",
+          content: [{ type: "text", text: `生成成功\n![video](${stale})` }],
+          details: { assets: [{ attachmentId: "att_media", displayUrl: fresh }] },
+          isError: false,
+        },
+      ]),
+    );
+    const tool = (out[0]?.parts ?? [])[0] as Record<string, unknown>;
+    const content = (tool.output as { content: Array<{ text: string }> }).content;
+    expect(content[0]?.text).toContain(fresh);
+    expect(content[0]?.text).not.toContain(stale);
+  });
+
   it("孤立 toolResult → 独立 assistant message", () => {
     const out = agentMessagesToUiMessages(
       msgs([
@@ -391,6 +438,25 @@ describe("agentMessagesToUiMessages", () => {
     // 前缀为 /api/attachments/:id/raw(根相对走 baseUrl 前缀)。
     expect(part.url).toBe("/api/attachments/att_abc123/raw");
     expect(String(part.url).startsWith("data:")).toBe(false);
+  });
+
+  it("历史 image 同时带 attachmentId 与 displayUrl → 保留 server 签发参数", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([{
+        role: "user",
+        content: [{
+          type: "image",
+          mimeType: "image/png",
+          attachmentId: "att_abc123",
+          displayUrl: "/api/attachments/att_abc123/raw?exp=1&sig=expired",
+        }],
+      }]),
+      { baseUrl: "/api" },
+    );
+    expect((out[0]?.parts ?? [])[0]).toMatchObject({
+      attachmentId: "att_abc123",
+      url: "/api/attachments/att_abc123/raw?exp=1&sig=expired",
+    });
   });
 
   it("历史 image 带绝对 displayUrl(http(s))+ baseUrl → displayUrl 原样不前缀", () => {

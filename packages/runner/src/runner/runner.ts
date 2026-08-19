@@ -186,6 +186,10 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   const trusted = args.trusted || process.env.PI_WEB_TRUST_PROJECT === "1";
   const trust = makeResolveProjectTrust(trusted);
   if (args.sessionId?.trim()) process.env["PI_WEB_SESSION_ID"] = args.sessionId;
+  // Expose the actual agent source root to extensions.  The bundled agent's
+  // import.meta.url points at the runner cache, while source-owned assets must
+  // resolve from the original agent directory.
+  process.env["PI_WEB_AGENT_SOURCE_ROOT"] ??= dirname(args.agent);
 
   // per-source settings 装配期注入(spec: source-settings-and-slots,任务 3.1,通道 a,
   // Req 4.1-4.5):best-effort 读取该 source 已保存的设置值,失败/未声明一律降级 `{}`,

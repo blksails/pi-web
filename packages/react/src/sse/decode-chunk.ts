@@ -11,6 +11,7 @@
  */
 import type { UiMessageChunk } from "@blksails/pi-web-protocol";
 import type { UIMessageChunk } from "ai";
+import { compactToolOutputForUi } from "../transport/agent-message-to-ui.js";
 
 /**
  * 从 tool 失败产出中抽取人类可读 errorText。
@@ -124,7 +125,7 @@ export function decodeUiMessageChunk(chunk: UiMessageChunk): UIMessageChunk {
       return {
         type: "tool-output-available",
         toolCallId: chunk.toolCallId,
-        output: chunk.output,
+        output: compactToolOutputForUi(chunk.output),
         // preliminary(tool_execution_update 中间产出)透传 → AI SDK 按 toolCallId
         // 复用 part 并标记 preliminary,前端据此渲染 update/Streaming 态。
         ...(chunk.preliminary === true ? { preliminary: true } : {}),

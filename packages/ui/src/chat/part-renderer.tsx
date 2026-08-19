@@ -31,6 +31,7 @@ import { ChatError } from "../elements/chat-error.js";
 import { useI18n } from "../i18n/index.js";
 import type { TranslateFn } from "../i18n/index.js";
 import type { ConversationImageAction } from "@blksails/pi-web-kit";
+import { compactJson } from "../lib/compact-json.js";
 
 type AnyPart = UIMessage["parts"][number];
 
@@ -79,7 +80,7 @@ function DefaultDataPart({
       data-pi-data-part={part.type}
     >
       <pre className="overflow-x-auto whitespace-pre-wrap break-words">
-        {JSON.stringify(data, null, 2)}
+        {compactJson(data)}
       </pre>
     </div>
   );

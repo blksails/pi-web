@@ -75,7 +75,7 @@ describe("BootstrapGate", () => {
   });
 
   it("配置拉取失败 → 错误态,仍不渲染子树", async () => {
-    const fetchImpl = vi.fn(async () => ({ ok: false, status: 500 })) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(async () => ({ ok: false, status: 400 })) as unknown as typeof fetch;
     render(
       <BootstrapGate fetchImpl={fetchImpl}>
         <div data-testid="gated-subtree">gated</div>

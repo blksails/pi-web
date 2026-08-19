@@ -132,6 +132,56 @@ describe("query routes", () => {
     );
   });
 
+  it("GET messages → toolResult markdown 同步替换旧签名 URL", async () => {
+    const attachmentStore = {
+      head: async (id: string) =>
+        id === "att_video"
+          ? {
+              id,
+              name: "video.mp4",
+              mimeType: "video/mp4",
+              size: 3,
+              origin: "tool-output" as const,
+              sessionId: "sess-1",
+              createdAt: "2026-01-01T00:00:00.000Z",
+            }
+          : undefined,
+      presignUrl: async (id: string) => `/attachments/${id}/raw?exp=999&sig=fresh`,
+    } satisfies AttachmentStoreOption;
+    const stale = "/api/attachments/att_video/raw?exp=1&sig=expired";
+    const handler = setup(
+      (s) =>
+        s.setResponse(
+          () =>
+            ({
+              type: "response",
+              command: "get_messages",
+              success: true,
+              data: {
+                messages: [
+                  {
+                    role: "toolResult",
+                    content: [{ type: "text", text: `![video](${stale})` }],
+                    details: {
+                      assets: [{ attachmentId: "att_video", displayUrl: stale }],
+                    },
+                  },
+                ],
+              },
+            }) as unknown as RpcResponse,
+        ),
+      attachmentStore,
+    );
+
+    const res = await handler(get("/sessions/sess-1/messages"));
+    const body = (await res.json()) as {
+      messages: Array<{ content: Array<{ text?: string }> }>;
+    };
+    expect(body.messages[0]?.content[0]?.text).toBe(
+      "![video](/api/attachments/att_video/raw?exp=999&sig=fresh)",
+    );
+  });
+
   it("GET commands → { commands }", async () => {
     const handler = setup((s) =>
       s.setResponse(

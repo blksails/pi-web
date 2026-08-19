@@ -23,7 +23,7 @@
 
 /** 账单/额度/配额/付费类致命措辞(大小写不敏感;覆盖 OpenRouter/OpenAI/常见网关表达)。 */
 const FATAL_TEXT_PATTERN =
-  /requires? more credits|can only afford|insufficient[_ ]?(?:quota|credits|balance|funds)|out of (?:budget|credits)|quota (?:exceeded|exhausted)|\bbilling\b|payment required|available balance|usage limit reached|GoUsageLimitError|FreeUsageLimitError/i;
+  /requires? more credits|can only afford|insufficient[_ ]?(?:quota|credits|balance|funds)|out of (?:budget|credits)|quota (?:exceeded|exhausted)|\bbilling\b|payment required|available balance|usage limit reached|GoUsageLimitError|FreeUsageLimitError|AccountOverdueError|InvalidApiKey|API[- ]key is blocked|invalid api[- ]?key|account (?:overdue|suspended)|authentication failed/i;
 
 /** HTTP 402 Payment Required:带上下文锚定(`402:` 前缀或 `"code":402`),避免误伤嵌入的 token 数字。 */
 const HTTP_402_PATTERN = /(?:^|[^0-9])402\s*:|"code"\s*:\s*402/;

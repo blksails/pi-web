@@ -28,32 +28,47 @@ function makeTarget(): HotReloadTarget & { restarts: number } {
 }
 
 describe("hot-reload 门控", () => {
-  it("开发环境默认开启", () => {
+  it("开发环境默认关闭", () => {
     delete process.env["PI_RUNNER_HOT_RELOAD"];
+    delete process.env["PI_WEB_WATCH"];
+    delete process.env["PI_WEB_DISABLE_AGENT_HOT_RELOAD"];
     process.env["NODE_ENV"] = "development";
-    expect(isHotReloadEnabled()).toBe(true);
+    expect(isHotReloadEnabled()).toBe(false);
   });
 
   it("开发环境可显式关闭", () => {
     process.env["NODE_ENV"] = "development";
     process.env["PI_RUNNER_HOT_RELOAD"] = "0";
+    delete process.env["PI_WEB_WATCH"];
     expect(isHotReloadEnabled()).toBe(false);
   });
 
   it("production 即使开了开关也关闭", () => {
     process.env["NODE_ENV"] = "production";
     process.env["PI_RUNNER_HOT_RELOAD"] = "1";
+    delete process.env["PI_WEB_WATCH"];
     expect(isHotReloadEnabled()).toBe(false);
   });
 
   it("dev + PI_RUNNER_HOT_RELOAD=1 启用", () => {
     process.env["NODE_ENV"] = "development";
     process.env["PI_RUNNER_HOT_RELOAD"] = "1";
+    delete process.env["PI_WEB_WATCH"];
     expect(isHotReloadEnabled()).toBe(true);
+  });
+
+  it("桌面强制关闭，即使外部传入 watch 开关", () => {
+    process.env["NODE_ENV"] = "development";
+    process.env["PI_RUNNER_HOT_RELOAD"] = "1";
+    process.env["PI_WEB_WATCH"] = "1";
+    process.env["PI_WEB_DISABLE_AGENT_HOT_RELOAD"] = "1";
+    expect(isHotReloadEnabled()).toBe(false);
   });
 
   it("未启用时 registerForHotReload 返回空操作且不抛", () => {
     delete process.env["PI_RUNNER_HOT_RELOAD"];
+    delete process.env["PI_WEB_WATCH"];
+    delete process.env["PI_WEB_DISABLE_AGENT_HOT_RELOAD"];
     process.env["NODE_ENV"] = "development";
     const target = makeTarget();
     const unregister = registerForHotReload(target);

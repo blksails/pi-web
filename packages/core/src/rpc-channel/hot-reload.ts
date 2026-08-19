@@ -7,7 +7,8 @@
  * {@link PiRpcProcess} 在**空闲时**重启子进程。新进程 = 全新 jiti = 重读源码(jiti 的 fsCache
  * 按内容 hash 自动重转译);会话 id 经 spawnSpec 复用,新 runner 从持久化 jsonl **续上对话**。
  *
- * 默认关闭。开启:`NODE_ENV !== production` 且 `PI_RUNNER_HOT_RELOAD=1`。
+ * 默认关闭。开启需显式设置 `PI_RUNNER_HOT_RELOAD=1`；桌面运行时可用
+ * `PI_WEB_DISABLE_AGENT_HOT_RELOAD=1` 强制关闭，避免长任务期间 runner 被重启。
  * 监视目录默认 `packages/tool-kit/src`,可经 `PI_RUNNER_HOT_RELOAD_PATHS`(逗号分隔绝对路径)覆盖。
  */
 import { watch, existsSync, type FSWatcher } from "node:fs";
@@ -26,16 +27,14 @@ export interface HotReloadTarget {
   hotReloadPaths?: readonly string[];
 }
 
-/** 开发环境默认启用；生产环境仅经显式 `PI_WEB_WATCH=1` 启用。 */
+/** Runner 热重载默认关闭；仅显式 opt-in，且桌面环境可强制禁用。 */
 export function isHotReloadEnabled(): boolean {
+  if (process.env["PI_WEB_DISABLE_AGENT_HOT_RELOAD"] === "1") return false;
   // CLI `pi-web --watch` 经 PI_WEB_WATCH 显式启用:不受 dev 门控限制,在 production
   // standalone 下也生效(仅当用户主动 --watch,不改默认行为)。见 spec pi-web-cli Req 8。
   if (process.env["PI_WEB_WATCH"] === "1") return true;
   if (process.env["PI_RUNNER_HOT_RELOAD"] === "0") return false;
-  return process.env["NODE_ENV"] === "development" || (
-    process.env["NODE_ENV"] !== "production" &&
-    process.env["PI_RUNNER_HOT_RELOAD"] === "1"
-  );
+  return process.env["NODE_ENV"] !== "production" && process.env["PI_RUNNER_HOT_RELOAD"] === "1";
 }
 
 const DEBOUNCE_MS = 200;
@@ -115,7 +114,7 @@ function isSourceFile(filename: string | Buffer | null | undefined): boolean {
   // Agent 目录含 node_modules、Vitest/Vite 缓存与临时编译文件；把这些误判为
   // 源码会在测试/构建期间反复重启 runner，最终与旧 stdin 写竞争并触发 EPIPE。
   if (parts.some((part) =>
-    part === "node_modules" || part === ".vite" || part === "coverage" || part === "test-results")) {
+    part === "node_modules" || part === ".vite" || part === ".iteration" || part === ".pi" || part === "coverage" || part === "test-results")) {
     return false;
   }
   if (/^vitest\.config\.ts\.timestamp-/.test(basename) || basename === "results.json") {

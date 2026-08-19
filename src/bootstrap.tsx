@@ -75,9 +75,29 @@ export async function fetchBootstrap(
     sessionId !== undefined && sessionId.length > 0
       ? `/api/bootstrap?sessionId=${encodeURIComponent(sessionId)}`
       : "/api/bootstrap";
-  const res = await fetchImpl(url);
-  if (!res.ok) throw new Error(`bootstrap ${res.status}`);
-  return (await res.json()) as BootstrapPayload;
+  // Dev desktop starts Vite before the API child. Retry transient proxy/5xx
+  // responses so a page opened during that short hand-off does not get stuck
+  // on the fatal bootstrap screen.
+  const retryDelays = [200, 500, 1_000, 2_000];
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+    let response: Response | undefined;
+    try {
+      response = await fetchImpl(url);
+    } catch (error) {
+      lastError = error;
+    }
+    if (response?.ok) return (await response.json()) as BootstrapPayload;
+    if (response !== undefined) {
+      lastError = new Error(`bootstrap ${response.status}`);
+      if (response.status < 500) throw lastError;
+    }
+    if (attempt === retryDelays.length) {
+      throw lastError instanceof Error ? lastError : new Error(String(lastError));
+    }
+    await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 export function BootstrapGate({

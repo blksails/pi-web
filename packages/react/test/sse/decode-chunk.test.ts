@@ -71,6 +71,18 @@ describe("decodeUiMessageChunk", () => {
     });
   });
 
+  it("compacts oversized live tool output before AI SDK render", () => {
+    const chunk = decodeUiMessageChunk({
+      type: "tool-output-available",
+      toolCallId: "c1",
+      output: { details: { value: "x".repeat(40_000), assets: [{ attachmentId: "att_x" }] } },
+    });
+    const output = (chunk as { output: Record<string, unknown> }).output;
+    expect(output._uiTruncated).toBe(true);
+    expect(JSON.stringify(output).length).toBeLessThan(16_000);
+    expect((output.details as Record<string, unknown>).assets).toBeDefined();
+  });
+
   it("tool-output-available isError → tool-output-error (sandbox/tool fail visible)", () => {
     expect(
       decodeUiMessageChunk({

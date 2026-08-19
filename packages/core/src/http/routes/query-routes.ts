@@ -146,8 +146,27 @@ async function refreshHistoryAttachmentUrls(
     }),
   );
 
+  // toolResult 正文常以 markdown 保存旧签名 URL。按同一份已校验的 id→URL 映射重写
+  // 字符串，保证通用文本渲染器与 details.assets 使用同一份当前签名；不为未知 id
+  // 构造裸 raw URL，避免把安全校验降级成路径猜测。
+  const rewriteText = (text: string): string =>
+    text.replace(
+      /(?:https?:\/\/[^\s)\]"'<>]+)?\/attachments\/(att_[A-Za-z0-9_-]+)\/raw(?:\?[^\s)\]"'<>]*)?/g,
+      (match: string, id: string) => {
+        const fresh = urls.get(id);
+        if (fresh === undefined) return match;
+        const marker = "/attachments/";
+        const markerIndex = match.indexOf(marker);
+        const freshMarkerIndex = fresh.indexOf(marker);
+        return markerIndex < 0 || freshMarkerIndex < 0
+          ? match
+          : `${match.slice(0, markerIndex)}${fresh.slice(freshMarkerIndex)}`;
+      },
+    );
+
   const rewrite = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(rewrite);
+    if (typeof value === "string") return rewriteText(value);
     if (!isRecord(value)) return value;
     const next = Object.fromEntries(
       Object.entries(value).map(([key, child]) => [key, rewrite(child)]),
