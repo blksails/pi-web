@@ -7,9 +7,8 @@
  * {@link PiRpcProcess} 在**空闲时**重启子进程。新进程 = 全新 jiti = 重读源码(jiti 的 fsCache
  * 按内容 hash 自动重转译);会话 id 经 spawnSpec 复用,新 runner 从持久化 jsonl **续上对话**。
  *
- * 默认关闭。开启需显式设置 `PI_RUNNER_HOT_RELOAD=1`；桌面运行时可用
- * `PI_WEB_DISABLE_AGENT_HOT_RELOAD=1` 强制关闭，避免长任务期间 runner 被重启。
- * 监视目录默认 `packages/tool-kit/src`,可经 `PI_RUNNER_HOT_RELOAD_PATHS`(逗号分隔绝对路径)覆盖。
+ * 当前产品策略永久关闭。保留模块与导出，避免旧调用方在启动时改变会话生命周期；
+ * 任何环境变量（包括 `PI_RUNNER_HOT_RELOAD=1`、`PI_WEB_WATCH=1`）都不能重启 Agent。
  */
 import { watch, existsSync, type FSWatcher } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -27,14 +26,9 @@ export interface HotReloadTarget {
   hotReloadPaths?: readonly string[];
 }
 
-/** Runner 热重载默认关闭；仅显式 opt-in，且桌面环境可强制禁用。 */
+/** Agent runner 热重载永久关闭，避免长任务期间会话/聊天被重启。 */
 export function isHotReloadEnabled(): boolean {
-  if (process.env["PI_WEB_DISABLE_AGENT_HOT_RELOAD"] === "1") return false;
-  // CLI `pi-web --watch` 经 PI_WEB_WATCH 显式启用:不受 dev 门控限制,在 production
-  // standalone 下也生效(仅当用户主动 --watch,不改默认行为)。见 spec pi-web-cli Req 8。
-  if (process.env["PI_WEB_WATCH"] === "1") return true;
-  if (process.env["PI_RUNNER_HOT_RELOAD"] === "0") return false;
-  return process.env["NODE_ENV"] !== "production" && process.env["PI_RUNNER_HOT_RELOAD"] === "1";
+  return false;
 }
 
 const DEBOUNCE_MS = 200;
@@ -200,14 +194,8 @@ function ensureWatching(): void {
   }
 }
 
-/** 注册一个可热重启目标(仅在启用时实际生效);返回注销函数。 */
+/** 注册接口保留给稳定 ABI；当前永远返回空操作，不建立 watcher。 */
 export function registerForHotReload(target: HotReloadTarget): () => void {
-  if (!isHotReloadEnabled()) return () => {};
-  ensureWatching();
-  targets.add(target);
-  watchTarget(target);
-  return () => {
-    targets.delete(target);
-    unwatchTarget(target);
-  };
+  void target;
+  return () => {};
 }

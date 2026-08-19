@@ -14,7 +14,8 @@
  *   - output-available(最终)            → end 态(Completed,默认展开)
  *   - output-error                       → error 态(Error,默认展开,destructive)
  *
- * 默认展开策略:未显式传 `defaultOpen` 时,update / end / error 展开(有输出即显),仅 start 折叠。
+ * 默认展开策略:未显式传 `defaultOpen` 时,update / error 展开；视频/媒体执行结果终态折叠，
+ * 以免源码、参数与结构化 JSON 占满聊天；图片等可视化结果仍由调用方显式或业务卡展开。
  * 明细区可折叠并带键盘可达 + aria 状态。数据型 input/output 用同步 JSON 代码块
  * (实测 streamdown shiki 对代码块异步高亮且破坏文本格式,见 spec research.md R4),
  * 字符串型 output 经 Response 富渲染。
@@ -523,11 +524,37 @@ function freshAttachmentUrl(attachmentId: string, fallback?: string): string {
   return `/api/attachments/${encodeURIComponent(attachmentId)}/raw`;
 }
 
-function imageAssetsFromDetails(value: unknown): ConversationImageAsset[] {
-  if (typeof value !== "object" || value === null) return [];
-  const assets = (value as { assets?: unknown }).assets;
-  if (!Array.isArray(assets)) return [];
-  return assets.flatMap((item, index) => {
+interface ToolMediaAsset {
+  readonly id: string;
+  readonly url: string;
+  readonly mediaType: string;
+  readonly filename?: string;
+  readonly attachmentId?: string;
+}
+
+function mediaAssetCandidates(value: unknown): unknown[] {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
+  const object = value as Record<string, unknown>;
+  const candidates: unknown[] = [];
+  if (Array.isArray(object.assets)) candidates.push(...object.assets);
+  if (object.output !== undefined) candidates.push(object.output);
+  if (object.value !== undefined && object.value !== value) candidates.push(...mediaAssetCandidates(object.value));
+  return candidates;
+}
+
+function inferMediaType(...values: Array<string | undefined>): string {
+  for (const value of values) {
+    const lower = value?.split(/[?#]/, 1)[0]?.toLowerCase() ?? "";
+    if (/\.(?:png|jpe?g|webp|gif|bmp)$/.test(lower)) return `image/${lower.endsWith(".jpg") || lower.endsWith(".jpeg") ? "jpeg" : lower.slice(lower.lastIndexOf(".") + 1)}`;
+    if (/\.(?:mp4|webm|mov|m4v)$/.test(lower)) return lower.endsWith(".webm") ? "video/webm" : lower.endsWith(".mov") ? "video/quicktime" : "video/mp4";
+    if (/\.(?:mp3|wav|aac|m4a|ogg)$/.test(lower)) return lower.endsWith(".wav") ? "audio/wav" : lower.endsWith(".m4a") ? "audio/mp4" : lower.endsWith(".ogg") ? "audio/ogg" : lower.endsWith(".aac") ? "audio/aac" : "audio/mpeg";
+  }
+  return "application/octet-stream";
+}
+
+function mediaAssetsFromDetails(value: unknown): ToolMediaAsset[] {
+  const seen = new Set<string>();
+  return mediaAssetCandidates(value).flatMap((item, index) => {
     if (typeof item !== "object" || item === null) return [];
     const asset = item as {
       attachmentId?: unknown;
@@ -535,27 +562,46 @@ function imageAssetsFromDetails(value: unknown): ConversationImageAsset[] {
       mimeType?: unknown;
       name?: unknown;
     };
-    if (typeof asset.displayUrl !== "string" || asset.displayUrl.trim() === "") {
-      return [];
-    }
     const attachmentId =
       typeof asset.attachmentId === "string" && asset.attachmentId !== ""
         ? asset.attachmentId
-        : attIdFromUrl(asset.displayUrl);
+        : typeof asset.displayUrl === "string" ? attIdFromUrl(asset.displayUrl) : undefined;
+    const displayUrl = typeof asset.displayUrl === "string" && asset.displayUrl.trim() !== ""
+      ? asset.displayUrl
+      : undefined;
+    const filename = typeof asset.name === "string" && asset.name !== "" ? asset.name : undefined;
+    if (attachmentId === undefined && displayUrl === undefined) return [];
+    const key = attachmentId ?? displayUrl!;
+    if (seen.has(key)) return [];
+    seen.add(key);
     return [{
-      id: attachmentId ?? `${asset.displayUrl}:${index}`,
+      id: attachmentId ?? `${displayUrl}:${index}`,
       url: attachmentId === undefined
-        ? asset.displayUrl
-        : freshAttachmentUrl(attachmentId, asset.displayUrl),
+        ? displayUrl!
+        : freshAttachmentUrl(attachmentId, displayUrl),
       mediaType: typeof asset.mimeType === "string" && asset.mimeType !== ""
         ? asset.mimeType
-        : "image/*",
-      ...(typeof asset.name === "string" && asset.name !== ""
-        ? { filename: asset.name }
-        : {}),
+        : inferMediaType(displayUrl, filename),
+      ...(filename === undefined ? {} : { filename }),
       ...(attachmentId !== undefined ? { attachmentId } : {}),
-    } satisfies ConversationImageAsset];
+    } satisfies ToolMediaAsset];
   });
+}
+
+function imageAssetsFromDetails(value: unknown): ConversationImageAsset[] {
+  return mediaAssetsFromDetails(value)
+    .filter((asset) => asset.mediaType.startsWith("image/") || asset.mediaType === "image/*")
+    .map((asset) => ({
+      id: asset.id,
+      url: asset.url,
+      mediaType: asset.mediaType,
+      ...(asset.filename === undefined ? {} : { filename: asset.filename }),
+      ...(asset.attachmentId === undefined ? {} : { attachmentId: asset.attachmentId }),
+    } satisfies ConversationImageAsset));
+}
+
+function nonImageMediaAssets(value: unknown): ToolMediaAsset[] {
+  return mediaAssetsFromDetails(value).filter((asset) => !asset.mediaType.startsWith("image/") && asset.mediaType !== "image/*");
 }
 
 function compactVideoTool(name: string): boolean {
@@ -588,6 +634,66 @@ function sanitizeToolText(raw: string): string {
     .join("\n");
 }
 
+function parseStructuredText(raw: string): unknown | undefined {
+  const value = raw.trim();
+  if (!(value.startsWith("{") || value.startsWith("["))) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return typeof parsed === "object" && parsed !== null ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function structuredOutputSummary(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const result = value as Record<string, unknown>;
+  if (result.error !== undefined) return `执行失败：${String(result.error)}`;
+  if (result.ok === false) return "执行失败，展开详情查看首因";
+  switch (result.action) {
+    case "render": return "Remotion 已完成渲染，媒体附件已就绪";
+    case "run": return "FFmpeg 已完成执行，媒体附件已就绪";
+    case "validate": return "配方校验已完成，展开详情查看质量报告";
+    case "starter": return "已读取推荐配方基线";
+    case "list": return "配方库已读取，可展开查看条目";
+    case "readme": return "工具契约已读取，本轮按此规范执行";
+    case "save": return "配方已保存到当前工作区";
+    case "promote": return "配方已提升为内置版本";
+    default: return undefined;
+  }
+}
+
+function ToolMediaOutput({ assets }: { readonly assets: readonly ToolMediaAsset[] }): React.JSX.Element | null {
+  if (assets.length === 0) return null;
+  return (
+    <div className="grid max-w-full gap-3 sm:grid-cols-2" data-pi-tool-media data-media-count={assets.length}>
+      {assets.map((asset) => (
+        <figure key={asset.id} className="overflow-hidden rounded-[6px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))]">
+          {asset.mediaType.startsWith("video/") ? (
+            <video
+              src={asset.url}
+              controls
+              playsInline
+              preload="metadata"
+              className="max-h-[40dvh] w-full bg-black object-contain"
+              aria-label={asset.filename ?? "生成视频"}
+              data-pi-tool-video
+              data-pi-conversation-media="video"
+            />
+          ) : asset.mediaType.startsWith("audio/") ? (
+            <audio src={asset.url} controls preload="metadata" className="w-full p-3" aria-label={asset.filename ?? "生成音频"} data-pi-tool-audio data-pi-conversation-media="audio" />
+          ) : (
+            <a href={asset.url} target="_blank" rel="noreferrer" className="block p-3 text-xs underline" data-pi-tool-media-link>
+              {asset.filename ?? "打开媒体附件"}
+            </a>
+          )}
+          {asset.filename !== undefined ? <figcaption className="truncate border-t border-[hsl(var(--border))] px-3 py-1.5 text-[11px] text-[hsl(var(--muted-foreground))]">{asset.filename}</figcaption> : null}
+        </figure>
+      ))}
+    </div>
+  );
+}
+
 /**
  * 按输出值类型生成默认渲染节点:
  *  - 字符串 → Response 富渲染;
@@ -614,13 +720,22 @@ function DefaultOutputNode({
   }
   const raw = textFromToolContent(output);
   if (raw !== undefined) {
-    const { text, images } = splitToolText(mask(raw));
+    const parsedText = parseStructuredText(raw);
+    const { text: markdownText, images } = splitToolText(mask(raw));
     const outputDetails =
       !Array.isArray(output) &&
       (output as { details?: unknown } | null)?.details !== undefined
         ? (output as { details?: unknown }).details
         : undefined;
-    const detailAssets = imageAssetsFromDetails(outputDetails);
+    const uniqueMedia = (assets: readonly ToolMediaAsset[]): ToolMediaAsset[] => [...new Map(assets.map((asset) => [asset.id, asset])).values()];
+    const mediaAssets = uniqueMedia([
+      ...nonImageMediaAssets(outputDetails),
+      ...nonImageMediaAssets(parsedText),
+    ]);
+    const detailAssets = [...new Map([
+      ...imageAssetsFromDetails(outputDetails),
+      ...imageAssetsFromDetails(parsedText),
+    ].map((asset) => [asset.id, asset])).values()];
     const visualAssets = detailAssets.length > 0
       ? detailAssets
       : images.map((image, index) => {
@@ -635,9 +750,13 @@ function DefaultOutputNode({
             ...(attachmentId !== undefined ? { attachmentId } : {}),
           } satisfies ConversationImageAsset;
         });
+    const summary = parsedText === undefined ? undefined : structuredOutputSummary(parsedText);
+    const detailsValue = parsedText !== undefined && outputDetails !== undefined && typeof outputDetails === "object" && outputDetails !== null && !Array.isArray(outputDetails)
+      ? { ...(outputDetails as Record<string, unknown>), value: parsedText }
+      : outputDetails;
     const details =
-      outputDetails !== undefined
-        ? maskDeep(outputDetails)
+      detailsValue !== undefined
+        ? maskDeep(detailsValue)
         : undefined;
     // details.pills → 工具卡 pill 行(ui-redesign pill 系统):label/src/copyText 走
     // 展示脱敏(mask),与 details 一致;未知 action 由 ToolPillRow 惰性化。
@@ -649,7 +768,7 @@ function DefaultOutputNode({
     }));
     return (
       <div className="space-y-3">
-        {text !== "" ? <Response>{sanitizeToolText(text)}</Response> : null}
+        {(summary ?? markdownText) !== "" ? <Response>{sanitizeToolText(summary ?? markdownText)}</Response> : null}
         {visualAssets.length > 0 ? (
           <ConversationImageGallery
             assets={visualAssets}
@@ -658,6 +777,7 @@ function DefaultOutputNode({
             className="[&_[data-pi-conversation-image]]:bg-[hsl(var(--surface-subtle))]"
           />
         ) : null}
+        <ToolMediaOutput assets={mediaAssets} />
         {details !== undefined ? (
           <details className="border-t border-[hsl(var(--border))] pt-2 text-[11px]">
             <summary className="cursor-pointer select-none font-medium text-[hsl(var(--muted-foreground))]">
@@ -680,7 +800,7 @@ function DefaultOutputNode({
 export interface PiToolPartProps {
   readonly part: ToolPart;
   readonly message?: UIMessage;
-  /** 显式展开值;未提供时按状态推导(end/error 展开,start/update 折叠)。 */
+  /** 显式展开值;未提供时按状态推导(媒体 end 折叠、update/error 展开)。 */
   readonly defaultOpen?: boolean;
   readonly className?: string;
   readonly imageActions?: readonly ConversationImageAction[];
@@ -698,7 +818,7 @@ export function PiToolPart({
   const name = toolNameOf(part);
   const isError = phase === "error";
   const contentId = React.useId();
-  // 按状态默认展开:update / error;普通 end 展开，视频工具 end 默认折叠以免 JSON 占满聊天;
+  // 按状态默认展开:update / error;视频/Remotion/FFmpeg end 默认折叠以免源码与 JSON 占满聊天;
   // 显式 defaultOpen 优先。用 derived state + 用户覆盖:phase 变化时随之展开;用户手动切换
   // 后由其接管,后续 phase 变化不再覆盖用户选择。
   const autoOpen = defaultOpen ?? (phase === "update" || phase === "error" || (phase === "end" && !compactVideoTool(name)));

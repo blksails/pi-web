@@ -113,6 +113,44 @@ describe("PiToolPart 四态", () => {
     expect(disclosure?.querySelector("summary")?.textContent).toBe("查看生成参数与结果");
   });
 
+  it("video_recipe_manage 的 JSON 文本转成简短结果，终态默认折叠", () => {
+    const output = {
+      content: [{ type: "text", text: JSON.stringify({
+        action: "render",
+        output: { attachmentId: "att_video", displayUrl: "/api/attachments/att_video/raw", mimeType: "video/mp4", name: "story.mp4" },
+      }) }],
+      details: { ok: true },
+    };
+    render(<PiToolPart part={toolEndPart("video_recipe_manage", {}, output)} />);
+    const card = screen.getByText("video_recipe_manage").closest("[data-pi-tool]");
+    expect(card).toHaveAttribute("data-pi-tool-compact", "true");
+    expect(card?.querySelector("[data-pi-tool-detail]")).toBeNull();
+  });
+
+  it("媒体详情按 mimeType 分流为视频/音频预览，图片仍走图片画廊", () => {
+    render(
+      <PiToolPart
+        part={toolEndPart("video_with_audio", {}, {
+          content: [{ type: "text", text: "处理完成" }],
+          details: {
+            ok: true,
+            assets: [
+              { attachmentId: "att_video", displayUrl: "/api/attachments/att_video/raw", mimeType: "video/mp4", name: "story.mp4" },
+              { attachmentId: "att_audio", displayUrl: "/api/attachments/att_audio/raw", mimeType: "audio/mpeg", name: "voice.mp3" },
+              { attachmentId: "att_image", displayUrl: "/api/attachments/att_image/raw", mimeType: "image/png", name: "poster.png" },
+              { attachmentId: "att_image_no_mime", displayUrl: "/api/attachments/att_image_no_mime/raw?name=poster.webp", name: "poster.webp" },
+            ],
+          },
+        })}
+        defaultOpen={true}
+      />,
+    );
+    const detail = screen.getByText("video_with_audio").closest("[data-pi-tool]")?.querySelector("[data-pi-tool-detail]");
+    expect(detail?.querySelector("[data-pi-tool-video]")).not.toBeNull();
+    expect(detail?.querySelector("[data-pi-tool-audio]")).not.toBeNull();
+    expect(detail?.querySelector("[data-pi-conversation-images]")).not.toBeNull();
+  });
+
   it("content 内 ![](url) 抽成原生 <img> 块渲染(不进 Streamdown 段落,避免 div-in-p)", () => {
     render(
       <PiToolPart

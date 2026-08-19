@@ -1,5 +1,5 @@
 /**
- * hot-reload 开关门控:默认关闭;仅 dev + PI_RUNNER_HOT_RELOAD=1 启用。
+ * Agent hot-reload 已永久关闭，环境变量不得改变会话生命周期。
  *
  * 注:启用后的 watch→restart 端到端路径依赖 fs.watch 时序(CI 易抖),不在单测覆盖;
  * 已手工端到端验证(改文件 → 子进程重启、通道续用)。这里只锁定确定性的门控行为。
@@ -36,7 +36,7 @@ describe("hot-reload 门控", () => {
     expect(isHotReloadEnabled()).toBe(false);
   });
 
-  it("开发环境可显式关闭", () => {
+  it("开发环境仍关闭", () => {
     process.env["NODE_ENV"] = "development";
     process.env["PI_RUNNER_HOT_RELOAD"] = "0";
     delete process.env["PI_WEB_WATCH"];
@@ -50,11 +50,11 @@ describe("hot-reload 门控", () => {
     expect(isHotReloadEnabled()).toBe(false);
   });
 
-  it("dev + PI_RUNNER_HOT_RELOAD=1 启用", () => {
+  it("dev + PI_RUNNER_HOT_RELOAD=1 仍关闭", () => {
     process.env["NODE_ENV"] = "development";
     process.env["PI_RUNNER_HOT_RELOAD"] = "1";
     delete process.env["PI_WEB_WATCH"];
-    expect(isHotReloadEnabled()).toBe(true);
+    expect(isHotReloadEnabled()).toBe(false);
   });
 
   it("桌面强制关闭，即使外部传入 watch 开关", () => {
@@ -62,6 +62,14 @@ describe("hot-reload 门控", () => {
     process.env["PI_RUNNER_HOT_RELOAD"] = "1";
     process.env["PI_WEB_WATCH"] = "1";
     process.env["PI_WEB_DISABLE_AGENT_HOT_RELOAD"] = "1";
+    expect(isHotReloadEnabled()).toBe(false);
+  });
+
+  it("任何 watcher 开关都不能启用 Agent 热重载", () => {
+    process.env["NODE_ENV"] = "development";
+    process.env["PI_RUNNER_HOT_RELOAD"] = "1";
+    process.env["PI_WEB_WATCH"] = "1";
+    delete process.env["PI_WEB_DISABLE_AGENT_HOT_RELOAD"];
     expect(isHotReloadEnabled()).toBe(false);
   });
 
