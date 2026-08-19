@@ -144,6 +144,9 @@ export class MockChannel implements SessionChannel {
   getCommands(): Promise<RpcResponse> {
     return this.record("get_commands", []);
   }
+  compact(customInstructions?: string): Promise<RpcResponse> {
+    return this.record("compact", [customInstructions]);
+  }
   fork(entryId: string): Promise<RpcResponse> {
     return this.record("fork", [entryId]);
   }

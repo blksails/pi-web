@@ -124,21 +124,30 @@ export function ConversationImageGallery({
             return false;
           }
         });
+        const isVideo = asset.mediaType.startsWith("video/");
+        const isAudio = asset.mediaType.startsWith("audio/");
         return (
           <figure
             key={asset.id}
             className="group m-0 flex min-h-0 max-w-full flex-col overflow-hidden rounded-[4px] border border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))]"
             data-pi-conversation-image
+            data-pi-conversation-media={isVideo ? "video" : isAudio ? "audio" : "image"}
           >
             <div className="flex aspect-[4/3] min-h-0 w-full items-center justify-center bg-[hsl(var(--surface-subtle))]">
               {/* eslint-disable-next-line @next/next/no-img-element -- SDK 组件须支持 blob/data/签名 URL。 */}
-              <img
-                src={asset.url}
-                alt={asset.filename ?? "AIGC 生成图片"}
-                className="block h-full w-full object-contain"
-                // ui-redesign:图片最大不超过屏幕高度 2/5(40dvh)。
-                style={{ maxHeight: "40dvh" }}
-              />
+              {isVideo ? (
+                <video src={asset.url} controls preload="metadata" className="block h-full w-full object-contain" style={{ maxHeight: "40dvh" }} aria-label={asset.filename ?? "AIGC 生成视频"} />
+              ) : isAudio ? (
+                <audio src={asset.url} controls preload="metadata" className="w-[92%]" aria-label={asset.filename ?? "AIGC 生成音频"} />
+              ) : (
+                <img
+                  src={asset.url}
+                  alt={asset.filename ?? "AIGC 生成图片"}
+                  className="block h-full w-full object-contain"
+                  // ui-redesign:图片最大不超过屏幕高度 2/5(40dvh)。
+                  style={{ maxHeight: "40dvh" }}
+                />
+              )}
             </div>
             <div
               className="flex max-w-full flex-wrap items-center gap-1 border-t border-[hsl(var(--border))] bg-[hsl(var(--surface))] p-1.5 text-[hsl(var(--foreground))]"

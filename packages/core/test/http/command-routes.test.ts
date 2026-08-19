@@ -75,6 +75,46 @@ describe("command routes", () => {
     expect(session.calls.some((c) => c.method === "prompt")).toBe(true);
   });
 
+  it("messages preflight compacts a high-context session before prompt", async () => {
+    const { handler, session } = setup();
+    session.setResponse((method) => {
+      if (method === "getSessionStats") {
+        return {
+          type: "response",
+          command: "get_session_stats",
+          success: true,
+          data: {
+            contextUsage: { tokens: 50_000, contextWindow: 100_000, percent: 50 },
+          },
+        } as unknown as RpcResponse;
+      }
+      if (method === "compact") {
+        return {
+          type: "response",
+          command: "compact",
+          success: true,
+          data: {
+            summary: "kept",
+            firstKeptEntryId: "entry-1",
+            tokensBefore: 50_000,
+          },
+        } as unknown as RpcResponse;
+      }
+      return {
+        type: "response",
+        command: method,
+        success: true,
+      } as RpcResponse;
+    });
+    const res = await handler(post("/sessions/sess-1/messages", { message: "workflow" }));
+    expect(res.status).toBe(200);
+    expect(session.calls.map((call) => call.method)).toEqual([
+      "getSessionStats",
+      "compact",
+      "prompt",
+    ]);
+  });
+
   it("steer / follow_up / model / thinking forward to their methods", async () => {
     const { handler, session } = setup();
     await handler(post("/sessions/sess-1/steer", { message: "s" }));
@@ -93,6 +133,40 @@ describe("command routes", () => {
     const res = await handler(post("/sessions/sess-1/abort"));
     expect(res.status).toBe(200);
     expect(session.calls.some((c) => c.method === "abort")).toBe(true);
+  });
+
+  it("compact forwards instructions and returns the compaction result", async () => {
+    const { handler, session } = setup();
+    session.setResponse((method) =>
+      method === "compact"
+        ? ({
+            type: "response",
+            command: "compact",
+            success: true,
+            data: {
+              summary: "kept",
+              firstKeptEntryId: "entry-1",
+              tokensBefore: 100,
+            },
+          } as unknown as RpcResponse)
+        : ({
+            type: "response",
+            command: method,
+            success: true,
+          } as RpcResponse),
+    );
+    const res = await handler(
+      post("/sessions/sess-1/compact", {
+        customInstructions: "keep artifact ids",
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()) as unknown).toMatchObject({
+      result: { summary: "kept", tokensBefore: 100 },
+    });
+    expect(session.calls.find((c) => c.method === "compact")?.args).toEqual([
+      "keep artifact ids",
+    ]);
   });
 
   it("clear_queue → PiSession.clearQueue, returns cleared queue body", async () => {

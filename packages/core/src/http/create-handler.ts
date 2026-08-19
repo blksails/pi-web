@@ -21,6 +21,7 @@ import { makeCreateSessionHandler } from "./routes/create-session.js";
 import {
   makeAbortHandler,
   makeClearQueueHandler,
+  makeCompactHandler,
   makeFollowUpHandler,
   makeForkHandler,
   makeMessagesHandler,
@@ -154,6 +155,11 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
       method: "POST",
       path: "/sessions/:id/messages",
       handler: makeMessagesHandler(store, completion, opts.attachmentStore),
+    },
+    {
+      method: "POST",
+      path: "/sessions/:id/compact",
+      handler: makeCompactHandler(store),
     },
     {
       method: "POST",

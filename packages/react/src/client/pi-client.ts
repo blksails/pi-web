@@ -43,6 +43,7 @@ import type {
   StateSetResponse,
   BashResult,
   Attachment,
+  CompactResponse,
 } from "@blksails/pi-web-protocol";
 import {
   GetAvailableModelsResponseSchema,
@@ -53,6 +54,7 @@ import {
   ListFavoritesResponseSchema,
   ListSessionFavoritesResponseSchema,
   RenameSessionResponseSchema,
+  CompactResponseSchema,
   GetLogsResponseSchema,
 } from "@blksails/pi-web-protocol";
 import type { LogEntry } from "@blksails/pi-web-logger";
@@ -124,6 +126,7 @@ export interface PiClient {
     req: SetSessionFavoritesRequest,
   ): Promise<ListSessionFavoritesResponse>;
   prompt(id: string, req: PromptRequest): Promise<CommandAck>;
+  compact(id: string, customInstructions?: string): Promise<CompactResponse>;
   steer(id: string, req: SteerRequest): Promise<CommandAck>;
   /** follow_up 端点;请求体形状同 SteerRequest(见 protocol rest-dto)。 */
   followUp(id: string, req: SteerRequest): Promise<CommandAck>;
@@ -287,6 +290,13 @@ export function createPiClient(
       ),
     prompt: (id, req) =>
       post<CommandAck>(`/sessions/${enc(id)}/messages`, req),
+    compact: async (id, customInstructions) =>
+      CompactResponseSchema.parse(
+        await post<unknown>(
+          `/sessions/${enc(id)}/compact`,
+          customInstructions === undefined ? {} : { customInstructions },
+        ),
+      ),
     steer: (id, req) =>
       post<CommandAck>(`/sessions/${enc(id)}/steer`, req),
     followUp: (id, req) =>

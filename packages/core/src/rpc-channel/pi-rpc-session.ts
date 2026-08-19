@@ -260,6 +260,12 @@ export class PiRpcSession implements PiRpcChannel {
     return this.#sendCommand("get_commands");
   }
 
+  compact(customInstructions?: string): Promise<RpcResponse> {
+    return this.#sendCommand("compact", {
+      ...(customInstructions !== undefined ? { customInstructions } : {}),
+    });
+  }
+
   fork(entryId: string): Promise<RpcResponse> {
     return this.#sendCommand("fork", { entryId });
   }

@@ -5,6 +5,7 @@
  *
  *   POST /sessions                         CreateSessionRequest → { sessionId }
  *   POST /sessions/:id/messages            PromptRequest        → CommandAck
+ *   POST /sessions/:id/compact             CompactRequest       → CompactResponse
  *   POST /sessions/:id/{steer,follow_up}   SteerRequest         → CommandAck
  *   POST /sessions/:id/abort               —                    → CommandAck
  *   POST /sessions/:id/models              SetModelRequest      → CommandAck
@@ -24,6 +25,7 @@ import { ImageContentSchema, ModelSchema, ThinkingLevelSchema } from "../rpc/mod
 import {
   RpcSessionStateSchema,
   RpcSlashCommandSchema,
+  CompactionResultSchema,
   SessionStatsSchema,
 } from "../rpc/session-state.js";
 import { AgentMessageSchema } from "../rpc/model.js";
@@ -77,6 +79,18 @@ export const PromptRequestSchema = z.object({
   attachmentIds: z.array(z.string()).optional(),
 });
 export type PromptRequest = z.infer<typeof PromptRequestSchema>;
+
+/** 主动压缩会话上下文;空对象亦合法。 */
+export const CompactRequestSchema = z.object({
+  customInstructions: z.string().optional(),
+});
+export type CompactRequest = z.infer<typeof CompactRequestSchema>;
+
+/** POST /sessions/:id/compact 成功响应。 */
+export const CompactResponseSchema = z.object({
+  result: CompactionResultSchema,
+});
+export type CompactResponse = z.infer<typeof CompactResponseSchema>;
 
 export const SteerRequestSchema = z.object({
   message: z.string(),

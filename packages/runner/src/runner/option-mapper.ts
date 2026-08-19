@@ -35,7 +35,7 @@ import type { ResolveProjectTrust } from "./project-trust.js";
 import {
   getSharedModelServicesFactory,
   listModelSources,
-} from "./model-source-registrar.js";
+} from "@blksails/pi-web-runner/runner/model-source-registrar.js";
 // ai-gateway-catalog-coldstart(任务 2.3):会话模型清单的反向拉取(runner 侧)。
 import { registerGatewayModelsPending } from "./gateway-models-wiring.js";
 import {

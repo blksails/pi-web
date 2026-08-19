@@ -535,11 +535,7 @@ function imageAssetsFromDetails(value: unknown): ConversationImageAsset[] {
       mimeType?: unknown;
       name?: unknown;
     };
-    if (
-      typeof asset.displayUrl !== "string" ||
-      asset.displayUrl.trim() === "" ||
-      (typeof asset.mimeType === "string" && !asset.mimeType.startsWith("image/"))
-    ) {
+    if (typeof asset.displayUrl !== "string" || asset.displayUrl.trim() === "") {
       return [];
     }
     const attachmentId =
@@ -560,6 +556,10 @@ function imageAssetsFromDetails(value: unknown): ConversationImageAsset[] {
       ...(attachmentId !== undefined ? { attachmentId } : {}),
     } satisfies ConversationImageAsset];
   });
+}
+
+function compactVideoTool(name: string): boolean {
+  return /(^|_)(video|remotion|ffmpeg)(_|$)/i.test(name) || name === "text_to_video" || name === "image_to_video";
 }
 
 /** 把工具文本分离为「其余文本」与「图片列表」——图片改原生 `<img>` 块渲染,不进 markdown 段落。 */
@@ -698,10 +698,10 @@ export function PiToolPart({
   const name = toolNameOf(part);
   const isError = phase === "error";
   const contentId = React.useId();
-  // 按状态默认展开:update / end / error 展开(有输出即显,含流式增量),仅 start 折叠;
+  // 按状态默认展开:update / error;普通 end 展开，视频工具 end 默认折叠以免 JSON 占满聊天;
   // 显式 defaultOpen 优先。用 derived state + 用户覆盖:phase 变化时随之展开;用户手动切换
   // 后由其接管,后续 phase 变化不再覆盖用户选择。
-  const autoOpen = defaultOpen ?? (phase === "update" || phase === "end" || phase === "error");
+  const autoOpen = defaultOpen ?? (phase === "update" || phase === "error" || (phase === "end" && !compactVideoTool(name)));
   const [userOverride, setUserOverride] = React.useState<boolean | null>(null);
   const open = userOverride ?? autoOpen;
   const onToggle = () => setUserOverride(!open);
@@ -752,6 +752,7 @@ export function PiToolPart({
       data-pi-tool
       data-pi-tool-phase={phase}
       data-pi-tool-name={name}
+      data-pi-tool-compact={compactVideoTool(name) ? "true" : "false"}
     >
       <ToolHeader
         name={name}

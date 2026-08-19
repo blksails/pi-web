@@ -1278,6 +1278,10 @@ export class PiSession {
     return this.forward(() => this.channel.getCommands());
   }
 
+  compact(customInstructions?: string): Promise<RpcResponse> {
+    return this.forward(() => this.channel.compact(customInstructions));
+  }
+
   /**
    * 执行 bash 命令(bang shell 命令,spec bang-shell-command)。转发到通道既有 bash 能力,
    * `excludeFromContext` 透传(`!!` → 输出不进入 LLM 上下文)。结果由 agent 同步返回。

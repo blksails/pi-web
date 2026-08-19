@@ -7,6 +7,7 @@
  */
 import {
   type Attachment,
+  CompactRequestSchema,
   ForkRequestSchema,
   PromptRequestSchema,
   type RpcResponse,
@@ -71,6 +72,55 @@ function requireSession(store: SessionStore, ctx: RequestContext): PiSession {
     throw new SessionNotFoundError(id);
   }
   return session;
+}
+
+const PREEMPTIVE_COMPACTION_PERCENT = 35;
+const PREEMPTIVE_COMPACTION_INSTRUCTIONS =
+  "Keep exact attachment ids, output ids, file paths, tool choices, failure classifications, and pending verification state; summarize completed work compactly.";
+const preflightCompactions = new WeakMap<PiSession, Promise<void>>();
+
+function contextUsagePercent(stats: unknown): number | undefined {
+  if (typeof stats !== "object" || stats === null) return undefined;
+  const usage = (stats as { contextUsage?: unknown }).contextUsage;
+  if (typeof usage !== "object" || usage === null) return undefined;
+  const record = usage as Record<string, unknown>;
+  const rawPercent = record.percent;
+  if (typeof rawPercent === "number" && Number.isFinite(rawPercent)) {
+    return rawPercent <= 1 ? rawPercent * 100 : rawPercent;
+  }
+  const tokens = record.tokens;
+  const contextWindow = record.contextWindow;
+  if (
+    typeof tokens === "number" &&
+    Number.isFinite(tokens) &&
+    typeof contextWindow === "number" &&
+    Number.isFinite(contextWindow) &&
+    contextWindow > 0
+  ) {
+    return (tokens / contextWindow) * 100;
+  }
+  return undefined;
+}
+
+/** 大工作流提交前的服务端兜底压缩;压缩异常不阻断原 prompt。 */
+function compactIfContextIsLarge(session: PiSession): Promise<void> {
+  const active = preflightCompactions.get(session);
+  if (active !== undefined) return active;
+  const task = (async () => {
+    try {
+      const response = await session.getSessionStats();
+      if (!response.success || !("data" in response)) return;
+      const percent = contextUsagePercent(response.data);
+      if (percent === undefined || percent < PREEMPTIVE_COMPACTION_PERCENT) return;
+      await session.compact(PREEMPTIVE_COMPACTION_INSTRUCTIONS);
+    } catch {
+      // best effort:底层 auto-compaction 或 prompt 仍可继续完成。
+    }
+  })();
+  preflightCompactions.set(session, task);
+  return task.finally(() => {
+    if (preflightCompactions.get(session) === task) preflightCompactions.delete(session);
+  });
 }
 
 /**
@@ -156,8 +206,9 @@ export function makeMessagesHandler(
           existingImages: images,
           sessionId: session.id,
           store: attachmentStore,
-        });
+          });
       }
+      await compactIfContextIsLarge(session);
       const options: {
         images?: typeof images;
         streamingBehavior?: typeof streamingBehavior;
@@ -166,6 +217,24 @@ export function makeMessagesHandler(
       if (streamingBehavior !== undefined)
         options.streamingBehavior = streamingBehavior;
       return ackOrError(await session.prompt(message, options));
+    } catch (err) {
+      return mapEngineError(err);
+    }
+  };
+}
+
+/** POST /sessions/:id/compact → PiSession.compact */
+export function makeCompactHandler(store: SessionStore): RouteHandler {
+  return async (ctx): Promise<Response> => {
+    const parsed = await validateBody(ctx.req, CompactRequestSchema);
+    if (!parsed.ok) return parsed.response;
+    try {
+      const session = requireSession(store, ctx);
+      const extracted = dataOrError<unknown>(
+        await session.compact(parsed.value.customInstructions),
+      );
+      if (!extracted.ok) return extracted.response;
+      return jsonResponse(200, { result: extracted.data });
     } catch (err) {
       return mapEngineError(err);
     }

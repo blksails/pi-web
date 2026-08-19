@@ -103,6 +103,9 @@ export interface SessionChannel extends PiRpcChannel {
   getMessages(): Promise<import("@blksails/pi-web-protocol").RpcResponse>;
   getSessionStats(): Promise<import("@blksails/pi-web-protocol").RpcResponse>;
   getCommands(): Promise<import("@blksails/pi-web-protocol").RpcResponse>;
+  compact(
+    customInstructions?: string,
+  ): Promise<import("@blksails/pi-web-protocol").RpcResponse>;
   fork(entryId: string): Promise<import("@blksails/pi-web-protocol").RpcResponse>;
   getForkMessages(): Promise<import("@blksails/pi-web-protocol").RpcResponse>;
   /**

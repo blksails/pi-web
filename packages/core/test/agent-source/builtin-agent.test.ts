@@ -13,6 +13,7 @@ import {
 
 const RUNNER = "/opt/pi-web/runner.js";
 const PI_CLI = "/opt/pi/dist/cli.js";
+const slashPath = (value: string): string => value.replaceAll("\\", "/");
 
 describe("identify — builtin: scheme", () => {
   it("recognizes builtin:default-agent", () => {
@@ -32,7 +33,7 @@ describe("defaultAgentEntryPath", () => {
     const p = defaultAgentEntryPath();
     expect(p).toBeDefined();
     expect(existsSync(p!)).toBe(true);
-    expect(p!.endsWith("default-agent/index.ts")).toBe(true);
+    expect(slashPath(p!).endsWith("default-agent/index.ts")).toBe(true);
   });
 });
 
@@ -52,7 +53,7 @@ describe("resolve — builtin:default-agent → custom mode", () => {
     const agentIdx = r.spawnSpec.args.indexOf("--agent");
     expect(agentIdx).toBeGreaterThanOrEqual(0);
     const entry = r.spawnSpec.args[agentIdx + 1]!;
-    expect(entry.endsWith("default-agent/index.ts")).toBe(true);
+    expect(slashPath(entry).endsWith("default-agent/index.ts")).toBe(true);
     expect(existsSync(entry)).toBe(true);
 
     const cwdIdx = r.spawnSpec.args.indexOf("--cwd");

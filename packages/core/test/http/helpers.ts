@@ -134,6 +134,9 @@ export class MockSession {
   getCommands(): Promise<RpcResponse> {
     return this.call("getCommands", []);
   }
+  compact(customInstructions?: string): Promise<RpcResponse> {
+    return this.call("compact", [customInstructions]);
+  }
   getAvailableModels(): Promise<RpcResponse> {
     return this.call("getAvailableModels", []);
   }

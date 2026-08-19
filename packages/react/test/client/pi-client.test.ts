@@ -55,6 +55,25 @@ describe("createPiClient request shaping", () => {
     expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ message: "hi" });
   });
 
+  it("compact POSTs instructions to /sessions/:id/compact and parses result", async () => {
+    const { fetch, calls } = mockFetch(
+      makeJsonResponse({
+        result: {
+          summary: "summary",
+          firstKeptEntryId: "entry-1",
+          tokensBefore: 100,
+        },
+      }),
+    );
+    const client = createPiClient("http://api.test", fetch);
+    const res = await client.compact("s 1", "keep artifact ids");
+    expect(res.result.tokensBefore).toBe(100);
+    expect(calls[0]?.url).toBe("http://api.test/sessions/s%201/compact");
+    expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({
+      customInstructions: "keep artifact ids",
+    });
+  });
+
   it("prompt serializes attachmentIds into the JSON body", async () => {
     const { fetch, calls } = mockFetch(makeJsonResponse({ ok: true }));
     const client = createPiClient("http://api.test", fetch);

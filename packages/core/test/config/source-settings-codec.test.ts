@@ -56,6 +56,7 @@ describe("SourceSettingsCodec", () => {
       await codec.save("source", SK, { label: "CRM" });
 
       const dirStat = await fs.stat(join(agentDir, "sources", SK));
+      if (process.platform === "win32") return;
       expect(dirStat.mode & 0o777).toBe(0o700);
 
       const fileStat = await fs.stat(join(agentDir, "sources", SK, "settings.json"));
@@ -121,6 +122,7 @@ describe("SourceSettingsCodec", () => {
       await codec.save("project", SK, { branch: "main" }, { cwd: projectDir });
 
       const dirStat = await fs.stat(join(projectDir, ".pi", "source-settings"));
+      if (process.platform === "win32") return;
       expect(dirStat.mode & 0o777).toBe(0o700);
 
       const fileStat = await fs.stat(join(projectDir, ".pi", "source-settings", `${SK}.json`));

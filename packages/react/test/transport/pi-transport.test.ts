@@ -34,13 +34,18 @@ function userMessage(text: string): UIMessage {
 interface Routed {
   postedMessages: { url: string; body: unknown; headers: Headers }[];
   streamRequests: { url: string; headers: Headers }[];
+  compactRequests: { url: string; body: unknown }[];
 }
 
-function routerFetch(sseText: string): {
+function routerFetch(sseText: string, contextPercent?: number): {
   fetch: typeof fetch;
   routed: Routed;
 } {
-  const routed: Routed = { postedMessages: [], streamRequests: [] };
+  const routed: Routed = {
+    postedMessages: [],
+    streamRequests: [],
+    compactRequests: [],
+  };
   const f = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const headers = new Headers(init?.headers);
@@ -52,6 +57,47 @@ function routerFetch(sseText: string): {
       });
       return makeJsonResponse({ ok: true });
     }
+    if (url.endsWith("/compact") && init?.method === "POST") {
+      routed.compactRequests.push({
+        url,
+        body: init.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      return makeJsonResponse({
+        result: {
+          summary: "summary",
+          firstKeptEntryId: "entry-1",
+          tokensBefore: 100,
+        },
+      });
+    }
+    if (url.endsWith("/stats")) {
+      return makeJsonResponse({
+        stats: {
+          sessionId: "s1",
+          userMessages: 3,
+          assistantMessages: 3,
+          toolCalls: 2,
+          toolResults: 2,
+          totalMessages: 8,
+          tokens: {
+            input: 1,
+            output: 1,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 2,
+          },
+          cost: 0,
+          contextUsage:
+            contextPercent === undefined
+              ? {}
+              : {
+                  tokens: contextPercent * 1000,
+                  contextWindow: 100_000,
+                  percent: contextPercent,
+                },
+        },
+      });
+    }
     if (url.endsWith("/stream")) {
       routed.streamRequests.push({ url, headers });
       return makeSseResponse(sseText);
@@ -61,8 +107,8 @@ function routerFetch(sseText: string): {
   return { fetch: f as unknown as typeof fetch, routed };
 }
 
-function build(sseText: string) {
-  const { fetch, routed } = routerFetch(sseText);
+function build(sseText: string, contextPercent?: number) {
+  const { fetch, routed } = routerFetch(sseText, contextPercent);
   const client = createPiClient("http://api.test", fetch);
   const connection = new PiSessionConnection({
     baseUrl: "http://api.test",
@@ -74,6 +120,22 @@ function build(sseText: string) {
 }
 
 describe("PiTransport.sendMessages", () => {
+  it("preemptively compacts high-context sessions before posting prompt", async () => {
+    const { transport, routed } = build(textStreamFrames("Hi"), 50);
+    await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "s1",
+      messageId: undefined,
+      messages: [userMessage("Hi")],
+      abortSignal: undefined,
+    });
+    expect(routed.compactRequests).toHaveLength(1);
+    expect(routed.compactRequests[0]?.body).toMatchObject({
+      customInstructions: expect.stringContaining("attachment ids"),
+    });
+    expect(routed.postedMessages).toHaveLength(1);
+  });
+
   it("POSTs the prompt to /messages and returns the SSE chunk stream", async () => {
     const { transport, routed } = build(textStreamFrames("Hi"));
     const stream = await transport.sendMessages({
@@ -318,6 +380,9 @@ describe("PiTransport.sendMessages", () => {
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         if (url.endsWith("/messages")) return makeJsonResponse({ ok: true });
+        if (url.endsWith("/stats")) {
+          return makeJsonResponse({ stats: { contextUsage: {} } });
+        }
         // /stream — 永不结束
         const stream = new ReadableStream<Uint8Array>({
           start() {

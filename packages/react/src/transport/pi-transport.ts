@@ -40,6 +40,33 @@ interface ReconnectOptions {
 
 const ImageContentArraySchema = ImageContentSchema.array();
 
+const PREEMPTIVE_COMPACTION_PERCENT = 35;
+const PREEMPTIVE_COMPACTION_INSTRUCTIONS =
+  "Keep exact attachment ids, output ids, file paths, tool choices, failure classifications, and pending verification state; summarize completed work compactly.";
+
+function contextUsagePercent(stats: unknown): number | undefined {
+  if (typeof stats !== "object" || stats === null) return undefined;
+  const usage = (stats as { contextUsage?: unknown }).contextUsage;
+  if (typeof usage !== "object" || usage === null) return undefined;
+  const record = usage as Record<string, unknown>;
+  const rawPercent = record.percent;
+  if (typeof rawPercent === "number" && Number.isFinite(rawPercent)) {
+    return rawPercent <= 1 ? rawPercent * 100 : rawPercent;
+  }
+  const tokens = record.tokens;
+  const contextWindow = record.contextWindow;
+  if (
+    typeof tokens === "number" &&
+    Number.isFinite(tokens) &&
+    typeof contextWindow === "number" &&
+    Number.isFinite(contextWindow) &&
+    contextWindow > 0
+  ) {
+    return (tokens / contextWindow) * 100;
+  }
+  return undefined;
+}
+
 /**
  * 从 useChat 透传的 body/metadata 中提取图片附件,映射为 pi 的 `images`。
  *
@@ -108,11 +135,40 @@ export class PiTransport<MESSAGE extends UIMessage = UIMessage>
   private readonly sessionId: string;
   private readonly client: PiClient;
   private readonly connection: PiSessionConnection;
+  private compactionPromise: Promise<void> | undefined;
 
   constructor(opts: PiTransportOptions) {
     this.sessionId = opts.sessionId;
     this.client = opts.client;
     this.connection = opts.connection;
+  }
+
+  /**
+   * 大型工作流提交前主动压缩一次上下文。底层 pi 已有自动压缩，此处提前一档，
+   * 避免长工具输出与新工作流提示同时进入模型窗口后出现 length 停止；失败则继续原
+   * prompt，避免压缩服务短暂异常把聊天入口锁死。
+   */
+  private compactIfNeeded(): Promise<void> {
+    if (this.compactionPromise !== undefined) return this.compactionPromise;
+    const task = (async () => {
+      try {
+        const stats = await this.client.getStats(this.sessionId);
+        const percent = contextUsagePercent(stats.stats);
+        if (percent === undefined || percent < PREEMPTIVE_COMPACTION_PERCENT) {
+          return;
+        }
+        await this.client.compact(
+          this.sessionId,
+          PREEMPTIVE_COMPACTION_INSTRUCTIONS,
+        );
+      } catch {
+        // best effort:prompt 仍须可提交,由底层 auto-compaction 兜底。
+      }
+    })();
+    this.compactionPromise = task;
+    return task.finally(() => {
+      if (this.compactionPromise === task) this.compactionPromise = undefined;
+    });
   }
 
   sendMessages = async (
@@ -145,6 +201,7 @@ export class PiTransport<MESSAGE extends UIMessage = UIMessage>
     await this.connection.whenSubscribed();
 
     try {
+      await this.compactIfNeeded();
       await this.client.prompt(this.sessionId, {
         message,
         ...(images === undefined ? {} : { images }),

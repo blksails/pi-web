@@ -37,7 +37,8 @@ function walk(dir: string, root: string, base: string, out: ScannedFile[] = []):
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(full, root, base, out);
     else if (entry.name.endsWith(".test.ts")) {
-      out.push({ key: `${root}/${path.relative(base, full)}`, abs: full, root });
+      const rel = path.relative(base, full).replaceAll("\\", "/");
+      out.push({ key: `${root}/${rel}`, abs: full, root });
     }
   }
   return out;

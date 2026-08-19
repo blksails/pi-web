@@ -149,6 +149,22 @@ describe("PiToolPart 四态", () => {
     expect(card?.querySelector("[data-pi-tool-detail]")).not.toBeNull();
   });
 
+  it("视频工具终态默认收起，并把 details.assets 规范成可播放视频卡", async () => {
+    render(<PiToolPart part={toolEndPart("video_recipe_manage", {}, {
+      content: [{ type: "text", text: "渲染完成" }],
+      details: {
+        ok: true,
+        assets: [{ attachmentId: "att_video", displayUrl: "/api/attachments/att_video/raw?sig=1", mimeType: "video/mp4", name: "cut.mp4" }],
+      },
+    })} />);
+    const card = screen.getByText("video_recipe_manage").closest("[data-pi-tool]")!;
+    expect(card).toHaveAttribute("data-pi-tool-compact", "true");
+    expect(card.querySelector("[data-pi-tool-detail]")).toBeNull();
+    await userEvent.click(screen.getByText("video_recipe_manage"));
+    expect(card.querySelector("video")).toHaveAttribute("src", "/api/attachments/att_video/raw?sig=1");
+    expect(card.querySelector("[data-pi-conversation-media=video]")).not.toBeNull();
+  });
+
   it("按状态默认展开:start 折叠、update/end/error 展开;显式 defaultOpen 覆盖", () => {
     const { rerender } = render(
       <PiToolPart part={toolStartPart("t", {})} />,

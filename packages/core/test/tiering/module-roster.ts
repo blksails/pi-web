@@ -110,6 +110,7 @@ export const MODULE_ROSTER: Readonly<Record<string, Layer>> = {
   "mcp-probe": "adapters", // MCP 探测实现(依赖 MCP SDK);内核只留端口 config/mcp-probe-port
   "model-sources": "adapters", // 取自 agent 运行时 SDK 的模型取数闭包(值导入 SDK,违 R1.3 故摘出)
   "attachment-example-tool": "adapters", // 示例工具(值导入 agent SDK);零生产引用,仅测试消费
+  moma: "adapters", // Moma provider adapter;绑定外部 Moma gateway
 };
 
 /**

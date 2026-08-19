@@ -85,6 +85,7 @@ describe("ConfigCodec", () => {
     await codec.save("settings", { theme: "light" });
 
     const stat = await fs.stat(join(tmpDir, "settings.json"));
+    if (process.platform === "win32") return;
     // On Linux/macOS, mode bits include type; mask with 0o777 for permissions only.
     const perm = stat.mode & 0o777;
     expect(perm).toBe(0o600);

@@ -9,7 +9,7 @@
  * 故本文件同时断言**正向**格子里这些元素确实出现 —— 两者合起来才排除了「什么都没渲染」这种
  * 假绿。判据被篡改时至少一格会红,这一点在实现期以篡改法逐条验过。
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { render } from "@testing-library/react";
 import type { WebExtension } from "@blksails/pi-web-kit";
 import { definePanes, type PaneSource } from "@blksails/pi-web-panes-kit";
@@ -39,6 +39,11 @@ const agentWithPanesKey: WebExtension = {
 
 /** 既不声明槽也不声明 pane 键的 agent(绝大多数第三方 agent 的形态)。 */
 const agentWithNothing: WebExtension = { manifestId: "agent-plain" };
+
+beforeEach(() => {
+  // mockSession 使用固定 sessionId；各格只测装载判据，不应继承上一格的 workspace 快照。
+  window.localStorage.clear();
+});
 
 function query(): {
   readonly aside: Element | null;

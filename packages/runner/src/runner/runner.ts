@@ -19,6 +19,7 @@ import {
   runRpcMode,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import { createJiti } from "jiti";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createLogger, initConfigFromEnv } from "@blksails/pi-web-logger";
@@ -143,7 +144,7 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   });
 
   // `runner_ready` 是传输就绪：子进程已成功载入 runner，并可让父进程把早到帧缓冲在 stdin
-  // 管道中。Agent 预编译、runtime 与可选扩展继续后台装配；若其失败，仍走既有进程退出错误链。
+  // 管道中。先完成 Agent definition 与声明校验；若其失败，必须在 ready 前走退出错误链。
   let readyAnnounced = false;
   const announceReady = (): void => {
     if (readyAnnounced) return;
@@ -154,8 +155,6 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
       process.stderr.write(`runner: ready send error: ${String(err)}\n`);
     }
   };
-  announceReady();
-
   // 未识别的 CLI 开关:解析器刻意放行(调用方可能比 runner 新),但必须可见 ——
   // 静默吞掉会让拼错的开关无声退回默认行为。同时写 stderr,因为日志默认关闭时
   // bootLog 不产生任何输出,而这条恰恰是「我明明传了参数却没生效」的唯一线索。
@@ -237,6 +236,8 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     process.env,
     args.agent,
   );
+  // 仅在 Agent 已成功加载且声明校验通过后宣布传输就绪；非法 definition 不得先进入 ready。
+  announceReady();
 
   // 会话打开或新建(open-or-create by id);纯逻辑见 open-or-create-session。
   // 沙盒模式(spec sandbox-baked-agent-image)兜底:烘焙镜像的 AGENT_CMD 定死于构建期,
@@ -405,7 +406,13 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
  */
 async function composeModelSources(): Promise<void> {
   try {
-    const mod = await import("@blksails/pi-web-server/host-assembly/model-sources.js");
+    // Workspace runner is loaded from TypeScript through jiti; use the same loader for
+    // the assembly seam so nested `.js` specifiers resolve to their `.ts` sources too.
+    // The published tree is valid ESM as well, and jiti handles that path unchanged.
+    const loader = createJiti(import.meta.url);
+    const mod = await loader.import<{
+      registerBuiltinModelSources: () => void;
+    }>("@blksails/pi-web-server/host-assembly/model-sources.js");
     mod.registerBuiltinModelSources();
   } catch (error) {
     bootLog.warn("model sources not composed", {

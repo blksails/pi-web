@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { join } from "node:path";
 import {
   packageIdFromSpec,
   packageInstallDir,
@@ -20,14 +21,16 @@ describe("packageIdFromSpec", () => {
 describe("packageInstallDir", () => {
   it("npm 落 node_modules(去版本,保留作用域)", () => {
     expect(packageInstallDir("npm:pi-mcp-adapter@1.0.0", AGENT)).toBe(
-      "/agent/npm/node_modules/pi-mcp-adapter",
+      join(AGENT, "npm", "node_modules", "pi-mcp-adapter"),
     );
     expect(packageInstallDir("npm:@aizigao/pi-proxy-fetch@1.0.2", AGENT)).toBe(
-      "/agent/npm/node_modules/@aizigao/pi-proxy-fetch",
+      join(AGENT, "npm", "node_modules", "@aizigao", "pi-proxy-fetch"),
     );
   });
   it("git 落 git/<host>/<path>(去 ref)", () => {
-    expect(packageInstallDir("git:github.com/o/r@v1", AGENT)).toBe("/agent/git/github.com/o/r");
+    expect(packageInstallDir("git:github.com/o/r@v1", AGENT)).toBe(
+      join(AGENT, "git", "github.com", "o", "r"),
+    );
   });
   it("local 取绝对路径原样;非绝对返回 undefined", () => {
     expect(packageInstallDir("local:/abs/pkg", AGENT)).toBe("/abs/pkg");
@@ -44,7 +47,7 @@ describe("packageInstallDir", () => {
 describe("resolveInPackage", () => {
   it("包内相对路径正常拼接;穿越逃逸包目录 → undefined", () => {
     expect(resolveInPackage("/agent/npm/node_modules/pkg", "./schema.json")).toBe(
-      "/agent/npm/node_modules/pkg/schema.json",
+      join("/agent", "npm", "node_modules", "pkg", "schema.json"),
     );
     expect(resolveInPackage("/agent/npm/node_modules/pkg", "../../../../etc/passwd")).toBeUndefined();
   });

@@ -5,6 +5,7 @@
  * 非法值按缺省、以及构造不因配置笔误而抛。
  */
 import { describe, expect, it } from "vitest";
+import { join } from "node:path";
 import {
   createLocalSessionMetaIndex,
   sessionMetaStoreKindFromEnv,
@@ -66,7 +67,7 @@ describe("★ 默认路径必须跟随 PI_WEB_AGENT_DIR(否则会写进用户真
       "../../src/session-meta/json-file-index.js"
     );
     expect(defaultSessionMetaIndexPath({ PI_WEB_AGENT_DIR: "/tmp/fake-agent" })).toBe(
-      "/tmp/fake-agent/piweb-session-index.json",
+      join("/tmp/fake-agent", "piweb-session-index.json"),
     );
     // env 覆盖仍优先
     expect(
@@ -84,7 +85,7 @@ describe("★ 默认路径必须跟随 PI_WEB_AGENT_DIR(否则会写进用户真
       "../../src/session-meta/sqlite-index.js"
     );
     expect(defaultSessionMetaDbPath({ PI_WEB_AGENT_DIR: "/tmp/fake-agent" })).toBe(
-      "/tmp/fake-agent/piweb-session-meta.db",
+      join("/tmp/fake-agent", "piweb-session-meta.db"),
     );
     expect(
       sessionMetaDbPathFromEnv({
