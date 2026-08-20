@@ -24,6 +24,7 @@ import { startParentWatchdog } from "@blksails/pi-web-server";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { getHandler, shutdownHandler } from "../lib/app/pi-handler.js";
+import { forwardWithColdResume } from "../lib/app/api-route.js";
 import {
   forgetSessionSource,
   recordSessionSource,
@@ -105,7 +106,11 @@ app.post("/api/session-source", async (c) => {
  * 原样交还,不重写 status/headers/body、不缓冲。
  */
 app.all("/api/*", async (c) => {
-  const res = await getHandler()(c.req.raw);
+  // 非 DELETE 的已失效会话会在 `forwardWithColdResume` 中按持久元数据重建并
+  // 重放原请求；DELETE 保持原 404/清理语义，不能意外复活用户明确删除的会话。
+  const res = c.req.method === "DELETE"
+    ? await getHandler()(c.req.raw)
+    : await forwardWithColdResume(c.req.raw);
 
   // 整会话删除成功时,顺带丢弃 app 级 sessionId → source 映射,避免陈旧条目堆积。
   // 尽力而为,绝不改变 handler 的响应(Req 1.5);子资源删除(多余路径段)不触发(Req 1.4)。

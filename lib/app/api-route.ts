@@ -10,19 +10,65 @@
  * 测试用它免去起 HTTP 服务,宿主用 `app.all("/api/*")` 走同一条路。
  */
 import { getHandler } from "./pi-handler.js";
-import { forgetSessionSource } from "./session-source-map.js";
-import { wholeSessionIdFromUrl } from "../../server/session-url.js";
+import { forgetSessionSource, lookupSessionSource } from "./session-source-map.js";
+import { sessionIdFromUrl, wholeSessionIdFromUrl } from "../../server/session-url.js";
+
+/** 同一冷会话的并发 SSE/状态请求只允许启动一个 runner。 */
+const pendingColdResumes = new Map<string, Promise<boolean>>();
+
+async function isSessionNotFound(response: Response): Promise<boolean> {
+  if (response.status !== 404) return false;
+  try {
+    const body = await response.clone().json() as { error?: { code?: unknown } };
+    return body.error?.code === "SESSION_NOT_FOUND";
+  } catch {
+    return false;
+  }
+}
+
+async function resumeSession(id: string, requestUrl: string): Promise<boolean> {
+  const pending = pendingColdResumes.get(id);
+  if (pending !== undefined) return pending;
+  const task = (async () => {
+    const source = await lookupSessionSource(id) ?? ".";
+    const resume = new Request(new URL("/api/sessions", requestUrl), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      // Resume metadata is authoritative; source only satisfies the public request schema.
+      body: JSON.stringify({ source, resumeId: id }),
+    });
+    return getHandler()(resume).then((response) => response.ok);
+  })();
+  pendingColdResumes.set(id, task);
+  try {
+    return await task;
+  } finally {
+    pendingColdResumes.delete(id);
+  }
+}
+
+/**
+ * 桌面 dev/服务滚动重启会丢进程内 channel，SPA 仍会用原 URL 重连 SSE。
+ * 首个 `SESSION_NOT_FOUND` 仅在持久元数据可恢复时重建并重放；其余 404 原样返回。
+ */
+export async function forwardWithColdResume(req: Request): Promise<Response> {
+  const replay = req.clone();
+  const first = await getHandler()(req);
+  const id = sessionIdFromUrl(req.url);
+  if (id === undefined || !await isSessionNotFound(first) || !await resumeSession(id, req.url)) return first;
+  return getHandler()(replay);
+}
 
 export function GET(req: Request): Promise<Response> {
-  return getHandler()(req);
+  return forwardWithColdResume(req);
 }
 
 export function POST(req: Request): Promise<Response> {
-  return getHandler()(req);
+  return forwardWithColdResume(req);
 }
 
 export function PUT(req: Request): Promise<Response> {
-  return getHandler()(req);
+  return forwardWithColdResume(req);
 }
 
 /**

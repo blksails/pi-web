@@ -10,7 +10,17 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 const CODE_EXTENSIONS = new Set([".cjs", ".js", ".json", ".mjs", ".ts", ".tsx"]);
-const SKIP_DIRECTORIES = new Set([".cache", ".git", "dist", "node_modules"]);
+// Tool indexes and iteration records belong to the workspace, not the Agent
+// bundle. Hashing them makes a cold runner scan gigabytes before it can emit
+// runner_ready, while their changes cannot affect the compiled entry.
+const SKIP_DIRECTORIES = new Set([
+  ".cache",
+  ".codegraph",
+  ".git",
+  ".iteration",
+  "dist",
+  "node_modules",
+]);
 const BUNDLE_EXTERNALS = ["@blksails/*", "@earendil-works/*", "node:*"];
 
 export interface PreparedAgentEntry {

@@ -12,6 +12,7 @@ import {
   lookupSessionSource,
   recordSessionSource,
 } from "@/lib/app/session-source-map";
+import { sessionIdFromUrl, wholeSessionIdFromUrl } from "@/server/session-url";
 
 const ID = "6acb5fe1-af90-4642-951f-30e324238ae5";
 const SOURCE = "./examples/webext-layout-agent";
@@ -29,6 +30,13 @@ afterEach(async () => {
 });
 
 describe("session-source-map", () => {
+  it("区分整会话删除 URL 与可冷恢复的会话子资源 URL", () => {
+    expect(wholeSessionIdFromUrl("http://localhost/api/sessions/abc")).toBe("abc");
+    expect(wholeSessionIdFromUrl("http://localhost/api/sessions/abc/state")).toBeUndefined();
+    expect(sessionIdFromUrl("http://localhost/api/sessions/abc/state")).toBe("abc");
+    expect(sessionIdFromUrl("http://localhost/api/sessions")).toBeUndefined();
+  });
+
   it("record → lookup 取回写入的 source", async () => {
     await recordSessionSource(ID, SOURCE);
     expect(await lookupSessionSource(ID)).toBe(SOURCE);

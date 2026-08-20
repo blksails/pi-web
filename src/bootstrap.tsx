@@ -78,7 +78,9 @@ export async function fetchBootstrap(
   // Dev desktop starts Vite before the API child. Retry transient proxy/5xx
   // responses so a page opened during that short hand-off does not get stuck
   // on the fatal bootstrap screen.
-  const retryDelays = [200, 500, 1_000, 2_000];
+  // Desktop dev may rebuild the native shell and API process for 10+ seconds.
+  // Keep the gate loading through that window; callers still get a finite error.
+  const retryDelays = [200, 500, 1_000, 2_000, 4_000, 8_000];
   let lastError: unknown;
   for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
     let response: Response | undefined;
@@ -112,6 +114,7 @@ export function BootstrapGate({
   readonly fetchImpl?: typeof fetch;
 }): React.JSX.Element {
   const [state, setState] = useState<BootstrapState>({ status: "loading" });
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,7 +133,7 @@ export function BootstrapGate({
     return () => {
       cancelled = true;
     };
-  }, [sessionId, fetchImpl]);
+  }, [sessionId, fetchImpl, retry]);
 
   if (state.status === "loading") {
     return (
@@ -149,7 +152,10 @@ export function BootstrapGate({
         data-pi-bootstrap="error"
         className="flex h-dvh w-full items-center justify-center text-sm text-red-600"
       >
-        配置加载失败：{state.message}
+        <span>配置加载失败：{state.message}</span>
+        <button type="button" className="ml-3 underline" onClick={() => setRetry((value) => value + 1)}>
+          重新连接
+        </button>
       </div>
     );
   }

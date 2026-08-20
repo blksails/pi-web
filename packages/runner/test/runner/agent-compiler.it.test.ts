@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -52,5 +52,25 @@ describe("prepareAgentEntry", () => {
     expect(b.path).not.toBe(a.path);
     expect(await readFile(a.path, "utf8")).toContain("alpha");
     expect(await readFile(b.path, "utf8")).toContain("beta");
+  });
+
+  it("忽略 CodeGraph 与迭代状态，避免它们拖慢 runner readiness", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "pi-web-agent-compiler-"));
+    tempRoots.push(root);
+    const entry = path.join(root, "index.ts");
+    const cacheDir = path.join(root, "cache");
+    await writeFile(entry, "export default { systemPrompt: 'ready' }\n", "utf8");
+    await mkdir(path.join(root, ".codegraph"), { recursive: true });
+    await mkdir(path.join(root, ".iteration"), { recursive: true });
+    await writeFile(path.join(root, ".codegraph", "index.json"), '{"revision":1}\n', "utf8");
+    await writeFile(path.join(root, ".iteration", "state.json"), '{"revision":1}\n', "utf8");
+
+    const first = await prepareAgentEntry(entry, root, { cacheDir });
+    await writeFile(path.join(root, ".codegraph", "index.json"), '{"revision":2}\n', "utf8");
+    await writeFile(path.join(root, ".iteration", "state.json"), '{"revision":2}\n', "utf8");
+    const afterMetadataChange = await prepareAgentEntry(entry, root, { cacheDir });
+
+    expect(first.compiled).toBe(true);
+    expect(afterMetadataChange).toMatchObject({ compiled: true, cacheHit: true, path: first.path });
   });
 });

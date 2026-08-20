@@ -5,7 +5,7 @@
  * 的组件会先按缺省值渲染一次再纠正,产生闪烁与误导。
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, waitFor, cleanup, fireEvent } from "@testing-library/react";
 import { BootstrapGate } from "@/src/bootstrap";
 import { resetRuntimeFeatures } from "@/lib/app/runtime-features";
 
@@ -85,6 +85,22 @@ describe("BootstrapGate", () => {
       expect(document.querySelector('[data-pi-bootstrap="error"]')).not.toBeNull(),
     );
     expect(screen.queryByTestId("gated-subtree")).toBeNull();
+  });
+
+  it("失败页可重新连接", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 400 })
+      .mockResolvedValueOnce({ ok: true, json: async () => PAYLOAD }) as unknown as typeof fetch;
+    render(
+      <BootstrapGate fetchImpl={fetchImpl}>
+        <div data-testid="gated-subtree">gated</div>
+      </BootstrapGate>,
+    );
+    await screen.findByText(/配置加载失败/);
+    fireEvent.click(screen.getByRole("button", { name: "重新连接" }));
+    await waitFor(() => expect(screen.getByTestId("gated-subtree")).toBeTruthy());
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("就绪时把门控注入运行时门控源(供 chat-app 的惰性求值读取)", async () => {
