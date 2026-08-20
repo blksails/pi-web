@@ -765,7 +765,6 @@ pub fn pane_webview_window_control(
                             return Ok(());
                         }
                     }
-                    let view = find_view()?;
                     // content pane：忽略屏幕坐标，重算槽位。
                     let _ = (x, y, width, height, scale_factor);
                     layout.apply_layout(&app)

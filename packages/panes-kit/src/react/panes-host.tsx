@@ -1131,6 +1131,11 @@ export function PanesHost({
     return undefined;
   }, [applyActivateOrReload, applyOpenPane, baseUrl, config.eventTargets, conversation, definition, hardClose, onEvent, onRequestClose, sessionId, sessionLogs, surface, upload]);
 
+  // 连接端口寿命长于单次渲染；其监听器不得捕获已替换的 surface / session 访问器。
+  // dev StrictMode 释放旧 ui-rpc 总线后，旧闭包会把请求送进已释放总线。
+  const handleRequestRef = React.useRef(handleRequest);
+  handleRequestRef.current = handleRequest;
+
   const bindSurface = React.useCallback((live: LiveConnection, pane: PaneDefinition): void => {
     live.surfaceCleanup?.();
     live.surfaceCleanup = undefined;
@@ -1279,7 +1284,7 @@ export function PanesHost({
         } satisfies PaneHostMessage);
         return;
       }
-      void handleRequest(instance, pane, parsed.data).then(
+      void handleRequestRef.current(instance, pane, parsed.data).then(
         (data) => port.post({ type: "pane:result", requestId: parsed.data.requestId, ok: true, data } satisfies PaneHostMessage),
         (reason: unknown) => {
           const error = asPaneHostError(reason);
@@ -1328,7 +1333,7 @@ export function PanesHost({
         } satisfies PaneHostMessage);
       }
     }
-  }, [bindState, bindSurface, chromeSignal, closeConnection, config.interactionMode, definition, handleRequest, onHostError, pushAllSignals]);
+  }, [bindState, bindSurface, chromeSignal, closeConnection, config.interactionMode, definition, onHostError, pushAllSignals]);
 
   React.useEffect(() => {
     if (hostEvent === undefined || lastHostEventId.current === hostEvent.id) return;

@@ -53,6 +53,8 @@ export const AGENT_ROUTES_DISABLED_ENV = "PI_WEB_AGENT_ROUTES_DISABLED";
 export const AGENT_ROUTE_TIMEOUT_ENV = "PI_WEB_AGENT_ROUTE_TIMEOUT_MS";
 /** 请求体上限 env(字节)。 */
 export const AGENT_ROUTE_BODY_LIMIT_ENV = "PI_WEB_AGENT_ROUTE_BODY_LIMIT";
+/** 冷启动可能包含 agent 编译；首请求等待声明帧的有界窗口，超时仍确定返回 404。 */
+export const AGENT_ROUTE_DECLARATION_WAIT_MS = 30_000;
 
 /** 门控:请求时读 env,关断→true(默认开启)。 */
 function routesDisabled(): boolean {
@@ -79,6 +81,16 @@ function requireSession(store: SessionStore, ctx: RequestContext): PiSession {
     throw new SessionNotFoundError(id);
   }
   return session;
+}
+
+/** 兼容旧的/测试 session 面子集；真实 PiSession 提供声明等待门。 */
+function waitForAgentRouteDeclaration(session: PiSession): Promise<void> {
+  const wait = (
+    session as PiSession & { waitForAgentRoutes?: (timeoutMs: number) => Promise<void> }
+  ).waitForAgentRoutes;
+  return typeof wait === "function"
+    ? wait.call(session, AGENT_ROUTE_DECLARATION_WAIT_MS)
+    : Promise.resolve();
 }
 
 /**
@@ -114,7 +126,7 @@ export function makeAgentRoutesListHandler(store: SessionStore): RouteHandler {
     }
     try {
       const session = requireSession(store, ctx);
-      return Promise.resolve(
+      return waitForAgentRouteDeclaration(session).then(() =>
         jsonResponse(200, { routes: session.agentRoutes }),
       );
     } catch (err) {
@@ -140,8 +152,13 @@ export function makeAgentRouteInvokeHandler(store: SessionStore): RouteHandler {
       const session = requireSession(store, ctx);
       const name = routeNameFromPath(ctx);
 
-      // 2) 名称:未声明→404(Req 2.2;handler 只能经声明绑定被调用,Req 4.4)。
-      const route = session.agentRoutes.find((r) => r.name === name);
+      // 2) 名称:首个 pane 请求可能早于 runner 的装配期声明帧；先等一个有界窗口，
+      //    再按声明绑定判定，避免把启动竞态误报为缺失 API。
+      let route = session.agentRoutes.find((r) => r.name === name);
+      if (route === undefined) {
+        await waitForAgentRouteDeclaration(session);
+        route = session.agentRoutes.find((r) => r.name === name);
+      }
       if (route === undefined) {
         return errorResponse(
           404,

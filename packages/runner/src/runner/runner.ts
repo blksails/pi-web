@@ -143,8 +143,8 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     ...(args.model !== undefined ? { model: args.model } : {}),
   });
 
-  // `runner_ready` 是传输就绪：子进程已成功载入 runner，并可让父进程把早到帧缓冲在 stdin
-  // 管道中。先完成 Agent definition 与声明校验；若其失败，必须在 ready 前走退出错误链。
+  // `runner_ready` 是传输就绪：子进程已完成 runner、Agent definition、会话桥与声明帧装配，
+  // 父进程方可放行早到 pane 请求；若任一装配失败，必须在 ready 前走退出错误链。
   let readyAnnounced = false;
   const announceReady = (): void => {
     if (readyAnnounced) return;
@@ -236,9 +236,6 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     process.env,
     args.agent,
   );
-  // 仅在 Agent 已成功加载且声明校验通过后宣布传输就绪；非法 definition 不得先进入 ready。
-  announceReady();
-
   // 会话打开或新建(open-or-create by id);纯逻辑见 open-or-create-session。
   // 沙盒模式(spec sandbox-baked-agent-image)兜底:烘焙镜像的 AGENT_CMD 定死于构建期,
   // per-session 的 --session-id 塞不进 argv,改经 configure→子进程 env 下发 PI_WEB_SESSION_ID;
@@ -342,6 +339,10 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   // agent-attachment-profile:装配期单帧发射(slash_completions 同族),关断或未声明 → 零帧
   // (Req 2.3/5.1)。已通过白名单校验(disabled 时视同未声明,attachmentProfileDisabled 门控)。
   emitAttachmentProfile(factory, attachmentProfileDisabled);
+
+  // 仅在 Agent 已成功加载、所有装配期声明帧(agent_routes 等)已发出且声明校验通过后
+  // 宣布传输就绪；否则主进程可能先放行 pane 首请求，再把尚未到达的 route 误判为 404。
+  announceReady();
 
   // stdin 恢复门 + 就绪帧(spec runner-ready-frame):frame-channel 挂载即 pause 了 stdin
   // (早到行缓冲不丢,Req 1.2),这里在**所有** data 读取器(frame-channel + 可选的

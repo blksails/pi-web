@@ -97,6 +97,14 @@ describe("PiSession.agentRoutes(声明帧缓存)", () => {
     );
     expect(s.agentRoutes).toEqual([{ name: "b", methods: ["POST"] }]);
   });
+
+  it("会话终态时释放声明等待门", async () => {
+    const ch = new MockChannel();
+    const s = newSession(ch, { readinessHandshake: true });
+    const waiting = s.waitForAgentRoutes(15_000);
+    await s.stop("idle");
+    await expect(waiting).resolves.toBeUndefined();
+  });
 });
 
 describe("PiSession.invokeAgentRoute(同步配对)", () => {

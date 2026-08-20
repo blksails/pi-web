@@ -25,6 +25,7 @@ import {
   useAttachments,
   type UploadAttachmentFn,
   uploadAttachment as defaultUploadAttachment,
+  type UiRpcBus,
   useBranches,
   useSuggestions,
   createUiRpcBus,
@@ -147,7 +148,7 @@ import type {
   ConversationImageAsset,
 } from "@blksails/pi-web-kit";
 import { createWebExtStateAccess, createWebExtSurfaceAccess } from "@blksails/pi-web-kit";
-import { SurfaceCommandResultSchema, PUBLISH_PREVIEW_DATA_PART } from "@blksails/pi-web-protocol";
+import { SurfaceCommandResultSchema, PUBLISH_PREVIEW_DATA_PART, type UiRpcRequest } from "@blksails/pi-web-protocol";
 import {
   SlotHost,
   applyExtensionRenderers,
@@ -595,16 +596,36 @@ export function PiChat({
     readonly options?: Parameters<ConversationAccess["submitUserMessage"]>[1];
   }>>([]);
 
-  // Tier3 ui-rpc 客户端总线(贡献点回 agent 的通道);会话/连接就绪时构造,卸载时释放。
-  const uiRpc = React.useMemo(() => {
+  // Tier3 ui-rpc 客户端总线(贡献点回 agent 的通道)。总线有订阅副作用，必须在 effect
+  // 中创建；若置于 useMemo，StrictMode 双渲染会把首个仍被 Pane 闭包使用的总线提前释放。
+  const [uiRpc, setUiRpc] = React.useState<UiRpcBus>();
+  const [surfaceUiRpc, setSurfaceUiRpc] = React.useState<UiRpcBus>();
+  React.useEffect(() => {
     if (client === undefined || sessionId === undefined || connection === undefined) {
+      setUiRpc(undefined);
+      setSurfaceUiRpc(undefined);
       return undefined;
     }
-    return createUiRpcBus({
-      send: (req) => client.uiRpc(sessionId, req).then(() => undefined),
+    const options = {
+      send: (req: UiRpcRequest) => client.uiRpc(sessionId, req).then(() => undefined),
       subscribeResponse: connection.controlStore.onUiRpcResponse,
-    });
+    };
+    const bus = createUiRpcBus(options);
+    // Remotion/FFmpeg surface operations may legitimately exceed the interactive
+    // command budget. Keep them on an independent bus so chat completions retain
+    // the normal 15s timeout and remain responsive while rendering continues.
+    const surfaceBus = createUiRpcBus({ ...options, timeoutMs: 5 * 60_000 });
+    setUiRpc(bus);
+    setSurfaceUiRpc(surfaceBus);
+    return () => {
+      bus.dispose();
+      surfaceBus.dispose();
+    };
   }, [client, sessionId, connection]);
+  const uiRpcRef = React.useRef<UiRpcBus | undefined>(undefined);
+  uiRpcRef.current = uiRpc;
+  const surfaceUiRpcRef = React.useRef<UiRpcBus | undefined>(undefined);
+  surfaceUiRpcRef.current = surfaceUiRpc;
   // 状态注入桥(state-injection-bridge):webext 共享状态接入,接到前端 ControlStore.states +
   // client.setState 写回。经 prop 透给 slot 组件(见 SlotHost.state)。会话/连接就绪时构造。
   const webextState = React.useMemo(() => {
@@ -627,11 +648,19 @@ export function PiChat({
   // domain 对宿主不透明(领域无关搬运);命令走 ui-rpc agent 转发路径(payload 无 name → 逃逸 host
   // 拦截 → 子进程 wireSurfaceBridge 派发)。会话/连接/总线就绪时构造。
   const surfaceAccess = React.useMemo(() => {
-    if (uiRpc === undefined || connection === undefined) return undefined;
+    if (surfaceUiRpc === undefined || connection === undefined) return undefined;
     const cs = connection.controlStore;
-    const bus = uiRpc;
     return createWebExtSurfaceAccess({
       run: async (domain, action, args) => {
+        const bus = surfaceUiRpcRef.current;
+        if (bus === undefined) {
+          return {
+            domain,
+            action,
+            ok: false,
+            error: { code: "surface_unavailable", message: "surface ui-rpc 尚未就绪" },
+          };
+        }
         const resp = await bus.request({
           point: "command",
           action: "execute",
@@ -653,12 +682,7 @@ export function PiChat({
       subscribe: (listener) => cs.subscribe(listener),
       hasCommand: (name) => (controls?.commands ?? []).some((cmd) => cmd.name === name),
     });
-  }, [uiRpc, connection, controls?.commands]);
-
-  React.useEffect(() => {
-    return () => uiRpc?.dispose();
-  }, [uiRpc]);
-
+  }, [surfaceUiRpc, connection, controls?.commands]);
 
   // 日志仅以声明式 Guest Pane 存在：不再把宿主 React 节点注入 Pane。
   // 明确的空 initialPaneIds 保证进入 Agent 时不自动打开日志，避免首帧闪烁。

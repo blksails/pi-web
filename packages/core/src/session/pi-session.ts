@@ -505,6 +505,11 @@ export class PiSession {
     if (state === "ready" || state === "error" || state === "ended") {
       this.clearReadyWatchdog();
     }
+    // A runner may announce readiness just before its route declaration frame;
+    // keep the declaration window open through `ready` to avoid a false 404.
+    if (state === "error" || state === "ended") {
+      this.declarations.releaseRouteWaiters();
+    }
     // 生命周期里程碑(真正跃迁才记一条,early-return 守卫已在上方拦截 no-op/终态)。
     if (state === "error") {
       lifecycleLog.error("lifecycle transition", { session: this.id, from, to: state, code, detail });
@@ -947,6 +952,17 @@ export class PiSession {
    */
   get agentRoutes(): ReadonlyArray<AgentRouteDeclDto> {
     return this.declarations.routes;
+  }
+
+  /**
+   * 等待装配期 route 声明，修复首个 pane 请求早于 runner 声明帧导致的假 404。
+   * 握手关闭或会话已离开 initializing 时不等待，保留旧 agent 语义。
+   */
+  waitForAgentRoutes(timeoutMs: number): Promise<void> {
+    if (!this.readinessHandshake || this._lifecycle !== "initializing") {
+      return Promise.resolve();
+    }
+    return this.declarations.waitForRoutes(timeoutMs);
   }
 
   /**

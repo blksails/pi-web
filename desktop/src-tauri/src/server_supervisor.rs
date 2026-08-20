@@ -17,15 +17,20 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+#[cfg(any(unix, test))]
+use std::time::Duration;
+#[cfg(unix)]
+use std::time::Instant;
 
 /// 端口探测的最大尝试次数（与 CLI 一致）。
 const MAX_PORT_TRIES: u16 = 20;
 /// stderr 尾部保留上限（字节），用于早退失败诊断（与 Electron 侧一致）。
 const STDERR_TAIL_LIMIT: usize = 4096;
 /// 优雅信号（SIGTERM）后等待进程组退出的宽限期，超时升级 SIGKILL。
+#[cfg(unix)]
 const STOP_GRACE: Duration = Duration::from_secs(3);
 /// stop 的兜底硬超时：即便 SIGKILL 后仍未回收也不无限等待。
+#[cfg(unix)]
 const STOP_HARD: Duration = Duration::from_secs(5);
 
 pub struct ServerStartOptions {

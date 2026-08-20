@@ -27,6 +27,8 @@ import type { AgentRouteDeclDto, SlashCompletionDecl } from "@blksails/pi-web-pr
 export class AgentDeclarations {
   private _slashCompletions: readonly SlashCompletionDecl[] = [];
   private _routes: readonly AgentRouteDeclDto[] = [];
+  private routesDeclared = false;
+  private readonly routeWaiters = new Set<() => void>();
   private _attachmentWriteProfile: string | undefined;
   private _attachmentCatalogAvailable = false;
 
@@ -44,6 +46,36 @@ export class AgentDeclarations {
   }
   setRoutes(routes: readonly AgentRouteDeclDto[]): void {
     this._routes = routes;
+    this.routesDeclared = true;
+    for (const resolve of this.routeWaiters) resolve();
+    this.routeWaiters.clear();
+  }
+
+  /**
+   * 等待装配期路由声明帧到达。声明帧早于 ready，但 HTTP 首请求可能先抵达；
+   * 超时后仍按「未声明」语义继续，不把旧 agent 卡死。
+   */
+  waitForRoutes(timeoutMs: number): Promise<void> {
+    if (this.routesDeclared || timeoutMs <= 0) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this.routeWaiters.delete(finish);
+        resolve();
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      if (typeof timer.unref === "function") timer.unref();
+      this.routeWaiters.add(finish);
+    });
+  }
+
+  /** 会话终态时放行等待者；调用方再按当前清单判定。 */
+  releaseRouteWaiters(): void {
+    for (const resolve of this.routeWaiters) resolve();
+    this.routeWaiters.clear();
   }
 
   /**

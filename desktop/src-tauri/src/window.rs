@@ -196,6 +196,7 @@ pub fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(MAIN_WINDOW_LABEL)
 }
 
+#[cfg(target_os = "macos")]
 pub fn main_window_exists(app: &AppHandle) -> bool {
     if native_child_webviews_enabled() {
         app.get_window(MAIN_WINDOW_LABEL).is_some()

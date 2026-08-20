@@ -64,10 +64,10 @@ describe("connectPaneGuest", () => {
         .then(() => undefined, (error: unknown) => error);
       let settled = false;
       void result.then(() => { settled = true; });
-      vi.advanceTimersByTime(15_001);
+      vi.advanceTimersByTime(60_001);
       await Promise.resolve();
       expect(settled).toBe(false);
-      vi.advanceTimersByTime(44_999);
+      vi.advanceTimersByTime(239_999);
       await expect(result).resolves.toMatchObject({ code: "REQUEST_TIMEOUT" });
       connection.close();
       channel.port1.close();

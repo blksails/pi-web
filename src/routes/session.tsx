@@ -15,6 +15,7 @@ function SessionInner({ id }: { readonly id: string }): React.JSX.Element {
   const config = useBootstrap();
   return (
     <ChatApp
+      key={id}
       defaultSource={config.defaultSource}
       defaultModel={config.defaultModel}
       defaultCwd={config.defaultCwd}

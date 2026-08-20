@@ -567,6 +567,7 @@ impl NativeWebviewLayoutManager {
         // ★ 任一 pane 实际 show/hide 过（含 hide 路径——它不置 raise_top）。
         //   方案 A 的重绘触发要覆盖它：两 pane 同槽叠放切换时 slot 不变、hide 不抬 top，
         //   但宿主 tab 带的像素已经变了，漏触发即回到「带子空白」（真机踩过）。
+        #[cfg(target_os = "macos")]
         let mut visibility_flipped = false;
         let mut applied_visibility: Vec<(String, bool)> = Vec::new();
         for (label, recorded_visible, keep_alive, initialized, was_applied_visible) in panes {
@@ -599,14 +600,20 @@ impl NativeWebviewLayoutManager {
                 if !was_applied_visible {
                     view.show().map_err(|e| e.to_string())?;
                     raise_top = true;
-                    visibility_flipped = true;
+                    #[cfg(target_os = "macos")]
+                    {
+                        visibility_flipped = true;
+                    }
                 }
                 top_label = Some(label.clone());
                 applied_visibility.push((label, true));
             } else {
                 if was_applied_visible {
                     view.hide().map_err(|e| e.to_string())?;
-                    visibility_flipped = true;
+                    #[cfg(target_os = "macos")]
+                    {
+                        visibility_flipped = true;
+                    }
                 }
                 applied_visibility.push((label, false));
             }

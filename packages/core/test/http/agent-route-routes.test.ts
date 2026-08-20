@@ -21,6 +21,7 @@ import { asPiSession, MockSession } from "./helpers.js";
 /** 记录 invokeAgentRoute 入参并按配置回包/抛错的会话 mock(PiSession routes 面子集)。 */
 class RoutesMockSession extends MockSession {
   agentRoutes: ReadonlyArray<AgentRouteDeclDto> = [];
+  waitForAgentRoutesImpl: (() => Promise<void>) | undefined;
   readonly invokeCalls: Array<{
     name: string;
     req: { method: AgentRouteMethod; query: Record<string, string>; body?: unknown };
@@ -38,6 +39,10 @@ class RoutesMockSession extends MockSession {
       return Promise.reject(this.invokeResult);
     }
     return Promise.resolve(this.invokeResult);
+  }
+
+  waitForAgentRoutes(): Promise<void> {
+    return this.waitForAgentRoutesImpl?.() ?? Promise.resolve();
   }
 }
 
@@ -196,6 +201,16 @@ describe("GET|POST /sessions/:id/agent-routes/:name(调用)", () => {
     expect(res.status).toBe(404);
     expect(await errorCode(res)).toBe("ROUTE_NOT_FOUND");
     expect(session.invokeCalls).toHaveLength(0);
+  });
+
+  it("首请求等待声明帧，避免装配竞态误报 ROUTE_NOT_FOUND", async () => {
+    const { handler, session } = setup([]);
+    session.waitForAgentRoutesImpl = async () => {
+      session.agentRoutes = [decl({ name: "gallery-stats" })];
+    };
+    const res = await handler(get("/sessions/sess-1/agent-routes/gallery-stats"));
+    expect(res.status).toBe(200);
+    expect(session.invokeCalls).toHaveLength(1);
   });
 
   it("方法不在声明集合 → 405 METHOD_NOT_ALLOWED,不转发(Req 2.3)", async () => {

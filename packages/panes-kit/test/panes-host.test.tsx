@@ -544,6 +544,28 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
     expect(results.find((message) => message.requestId === "r3")).toMatchObject({ ok: true, data: { ok: true } });
     expect(run).toHaveBeenCalledTimes(1);
     expect(run).toHaveBeenCalledWith("canvas", "ping", undefined);
+
+    // 长寿命 Pane 端口必须读取最新 surface；不能继续调用旧 ui-rpc 总线闭包。
+    const replacementRun = vi.fn(async () => ({ ok: true, source: "replacement" }));
+    const replacementSurface = {
+      run: replacementRun,
+      getState: <T,>(_key: string): T | undefined => ({ revision: 2 }) as T,
+      subscribe: () => () => {},
+      hasCommand: () => true,
+    };
+    view.rerender(<PanesHost
+      definition={protocolDefinition}
+      baseUrl="/api"
+      sessionId="s1"
+      upload={upload}
+      surface={replacementSurface}
+      onRequestClose={closeSidebar}
+      createInstanceId={(paneId) => `${paneId}-1`}
+    />);
+    port.postMessage({ type: "pane:request", requestId: "r4", operation: "surface.run", domain: "canvas", action: "ping" });
+    await until(() => results.some((message) => message.requestId === "r4"));
+    expect(replacementRun).toHaveBeenCalledWith("canvas", "ping", undefined);
+    expect(results.find((message) => message.requestId === "r4")).toMatchObject({ ok: true, data: { source: "replacement" } });
   });
 
   it("多实例独立端口观察同一 surface:canvas 镜像(F3),关闭其一不扰其余", async () => {

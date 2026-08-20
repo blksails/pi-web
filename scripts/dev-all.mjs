@@ -6,6 +6,8 @@ import path from 'node:path'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const devEnv = { ...process.env, NODE_ENV: process.env.NODE_ENV ?? 'development' }
+const apiUrl = process.env.PI_WEB_DEV_API_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3000}`
+const apiReadyTimeoutMs = Number(process.env.PI_WEB_DEV_API_READY_TIMEOUT_MS ?? 90000)
 
 const procs = []
 // 非 TTY(后台/CI)下 stdin 会 EOF,vite 见 stdin 关闭即自退,故只在交互终端里透传 stdin
@@ -27,6 +29,22 @@ function shutdown(code) {
   process.exitCode = code
 }
 
+async function waitForApi() {
+  const until = Date.now() + apiReadyTimeoutMs
+  const probeUrl = new URL('/api/bootstrap', apiUrl)
+  while (!exiting && Date.now() < until) {
+    try {
+      const response = await fetch(probeUrl)
+      if (response.status < 500) return
+    } catch {
+      // API server still starting; keep Vite closed so its proxy sees no transient refusal.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
+  if (exiting) throw new Error('API server exited before readiness')
+  throw new Error(`Timed out waiting for API after ${apiReadyTimeoutMs}ms: ${probeUrl}`)
+}
+
 process.on('SIGINT', () => shutdown(0))
 process.on('SIGTERM', () => shutdown(0))
 
@@ -41,7 +59,15 @@ if (process.env.PI_WEB_TRANSPORT === 'e2b') {
     'server/index.ts',
   ])
 }
-const viteArgs = [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js')]
-if (process.env.PI_WEB_DEV_CLIENT_HOST) viteArgs.push('--host', process.env.PI_WEB_DEV_CLIENT_HOST)
-if (process.env.PI_WEB_DEV_CLIENT_PORT) viteArgs.push('--port', process.env.PI_WEB_DEV_CLIENT_PORT)
-run(process.execPath, viteArgs)
+try {
+  await waitForApi()
+  if (!exiting) {
+    const viteArgs = [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js')]
+    if (process.env.PI_WEB_DEV_CLIENT_HOST) viteArgs.push('--host', process.env.PI_WEB_DEV_CLIENT_HOST)
+    if (process.env.PI_WEB_DEV_CLIENT_PORT) viteArgs.push('--port', process.env.PI_WEB_DEV_CLIENT_PORT)
+    run(process.execPath, viteArgs)
+  }
+} catch (error) {
+  console.error(error)
+  shutdown(1)
+}

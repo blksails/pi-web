@@ -16,10 +16,10 @@ import { installGlobalTauriPaneBootstrap } from "./adapters/tauri-runtime.js";
 // Keep this aligned with the host's native WebView readiness budget.
 const DEFAULT_PANE_HANDSHAKE_TIMEOUT_MS = 30_000;
 const DEFAULT_PANE_REQUEST_TIMEOUT_MS = 15_000;
-// Surface commands may include persistence plus a state projection. Keep the
-// ordinary RPC budget short, but give these agent-backed commands enough room
-// to finish before reporting a transport failure to the pane.
-const DEFAULT_PANE_SURFACE_REQUEST_TIMEOUT_MS = 60_000;
+// Surface commands may include a local Remotion/FFmpeg render plus persistence
+// and state projection. Keep ordinary RPC short, but match the host surface
+// bus budget so a pane never reports a false timeout while a valid render runs.
+const DEFAULT_PANE_SURFACE_REQUEST_TIMEOUT_MS = 5 * 60_000;
 
 interface PendingCall {
   resolve(value: unknown): void;

@@ -32,6 +32,13 @@ describe("AgentDeclarations — 写入与读取", () => {
     expect(d.routes).toBe(routes);
   });
 
+  it("等待中的调用在声明帧到达后立即放行", async () => {
+    const d = new AgentDeclarations();
+    const waiting = d.waitForRoutes(1_000);
+    d.setRoutes([]);
+    await expect(waiting).resolves.toBeUndefined();
+  });
+
   it("attachmentWriteProfile 原样回读", () => {
     const d = new AgentDeclarations();
     d.setAttachmentWriteProfile("s3-main");
